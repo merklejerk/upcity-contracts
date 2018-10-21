@@ -1,0 +1,10 @@
+{
+  "name": "upcity-contracts",
+  "version": "0.0.1",
+  "description": "Ethereum Smart Contracts for upcity.app",
+  "main": "index.js",
+  "repository": "https://github.com/merklejerk/upcity-contracts",
+  "author": "Lawrence <me@merklejerk.com>",
+  "license": "Apache-2.0",
+  "private": false
+}
