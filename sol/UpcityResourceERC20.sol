@@ -1,7 +1,7 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
-import './base/open-zeppelin/StandardToken.sol';
-import './base/open-zeppelin/SafeMath.sol';
+import {StandardToken} from './base/open-zeppelin/StandardToken.sol';
+import {SafeMath} from './base/open-zeppelin/SafeMath.sol';
 
 using SafeMath for uint256;
 
@@ -10,6 +10,7 @@ contract UpcityResourceERC20 is StandardToken {
 	public string name;
 	public string symbol;
 	public uint8 constant decimals = 18;
+	public address authority;
 
 	/// @dev Creates the contract.
 	/// @param _name Token name
@@ -17,8 +18,8 @@ contract UpcityResourceERC20 is StandardToken {
 	/// @param _authority Who can mint tokens and burn arbitrarily
 	/// @param vest Amount of tokens the contract instantly mint and will keep
 	/// locked up forever.
-	public constructor(
-			string _name, string _symbol, address _authority, uint256 vest) {
+	constructor(
+			string _name, string _symbol, address _authority, uint256 vest) public {
 
 		assert(vest >= 0);
 		name = _name;
