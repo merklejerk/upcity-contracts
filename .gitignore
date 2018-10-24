@@ -1,5 +1,5 @@
 /node_modules
-/build/output/*.json
-/build/src/*.sol
-/build/.cache.json
+/build/output/*
+/build/src/*
+/build/cache.json
 **/*.log
