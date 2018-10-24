@@ -1,9 +1,9 @@
 {
 	"test": {
-		"defs":  {"TEST": 1, "__BLOCKTIME": "__getBlockTime()"}
+		"defs":  {"TEST": 1}
 	},
 	"release": {
 		"default": true,
-		"defs": {"__BLOCKTIME": "uint64(block.timestamp)"}
+		"defs": {}
 	}
 }

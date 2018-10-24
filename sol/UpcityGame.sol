@@ -161,9 +161,9 @@ contract UpCityGame is UpCityBase {
 	function collect(int32 x, int32 y) public returns (bool) {
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner == msg.sender);
-		assert(__BLOCKTIME > tile.lastTouchTime);
-		uint256 dt = __BLOCKTIME - tile.lastTouchTime;
-		tile.lastTouchTime = __BLOCKTIME;
+		assert(_getBlockTime() > tile.lastTouchTime);
+		uint256 dt = _getBlockTime() - tile.lastTouchTime;
+		tile.lastTouchTime = _getBlockTime();
 		uint256[NUM_RESOURCES] memory amounts = [0, 0, 0];
 		for (uint8 height = 0; height < MAX_HEIGHT; height++) {
 			uint8 block = (tile.blocks >> (8*height)) & 0xFF;
@@ -205,14 +205,19 @@ contract UpCityGame is UpCityBase {
 
 
 	// #ifdef TEST
-	uint64 __blockTime = block.timestamp;
-	
-	function __getBlockTime() public view returns (uint64) {
-		return __blockTime;
+	uint64 _blockTime = block.timestamp;
+
+	function _getBlockTime() public view returns (uint64) {
+		return _blockTime;
 	}
 
-	function __setBlockTime(uint64 t) public {
-		__blockTime = t;
+	function _setBlockTime(uint64 t) public {
+		_blockTime = t;
 	}
+	// #else
+	function _getBlockTime() internal view returns (uint64) {
+		return uint64(block.timestamp);
+	}
+
 	// #endif
 }
