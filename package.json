@@ -10,7 +10,8 @@
 	"scripts": {
 		"build": "node src/build",
 		"test": "TARGET=test src/build && node src/test",
-		"deploy": "TARGET=release node src/build && node src/deploy"
+		"deploy": "TARGET=release node src/build && node src/deploy",
+		"clean": "node src/clean"
 	},
 	"devDependencies": {
 		"flex-contract": "^1.4.6",

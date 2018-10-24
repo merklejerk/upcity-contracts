@@ -2,7 +2,7 @@ const _ = require('lodash');
 const fs = require('mz/fs');
 const Preprocessor = require('preprocessor');
 const path = require('path');
-const proecss = require('process');
+const process = require('process');
 const solc = require('solc');
 const minimist = require('minimist');
 const project = require('./project');
@@ -11,10 +11,6 @@ const util = require('./util');
 const ARGS = minimist(process.argv.slice(2),
 	{boolean: ['force'], alias: {'force': ['f']}});
 const FORCE = !!ARGS.force;
-const CONFIG_PATH = path.resolve(project.PROJECT_ROOT, 'build.config.json');
-const CACHE_PATH = path.resolve(project.BUILD_ROOT, 'cache.json');
-const BUILD_SOL_ROOT = path.resolve(project.BUILD_ROOT, 'src');
-const BUILD_OUTPUT_ROOT = path.resolve(project.BUILD_ROOT, 'output');
 const SOL_FILE_FILTER = f => f.match(/\.sol$/i);
 
 async function getSolidityFiles(root) {
@@ -45,14 +41,14 @@ function preprocessCode(input, defs) {
 
 function getCodeDestinationPath(original) {
 	return util.transplantFilePath(
-		path.resolve(original), project.SOL_ROOT, BUILD_SOL_ROOT);
+		path.resolve(original), project.SOL_ROOT, project.BUILD_SOL_ROOT);
 }
 
 class CompilationError extends Error {};
 class ImportError extends Error {};
 
 async function compileAll(config) {
-	const files = await getSolidityFiles(BUILD_SOL_ROOT);
+	const files = await getSolidityFiles(project.BUILD_SOL_ROOT);
 	const inputs = _.zipObject(files,
 		await Promise.all(_.map(files, f => fs.readFile(f, 'utf-8'))));
 	const findImport = (name) => {
@@ -70,7 +66,7 @@ async function compileAll(config) {
 }
 
 async function loadConfig() {
-	const json = await fs.readFile(CONFIG_PATH);
+	const json = await fs.readFile(project.BUILD_CONFIG_PATH);
 	const config = JSON.parse(json);
 	const target = process.env['TARGET'];
 	if (!target) {
@@ -87,7 +83,7 @@ async function loadConfig() {
 
 async function loadCache() {
 	try {
-		const json = await fs.readFile(CACHE_PATH);
+		const json = await fs.readFile(project.CACHE_PATH);
 		return JSON.parse(json);
 	} catch (err) {
 		return null;
@@ -95,7 +91,7 @@ async function loadCache() {
 }
 
 async function writeCache(data) {
-	await fs.writeFile(CACHE_PATH, JSON.stringify(data));
+	await fs.writeFile(project.CACHE_PATH, JSON.stringify(data));
 }
 
 (async function() {
@@ -104,12 +100,12 @@ async function writeCache(data) {
 		const cached = await loadCache();
 		const inHash = await getSolidityFilesHash(project.SOL_ROOT);
 		if (FORCE || !cached || cached.inHash != inHash) {
-			await util.wipe(BUILD_SOL_ROOT);
+			await util.wipe(project.BUILD_SOL_ROOT);
 			await generateSource(config);
 		}
-		const outHash = await getSolidityFilesHash(BUILD_SOL_ROOT);
+		const outHash = await getSolidityFilesHash(project.BUILD_SOL_ROOT);
 		if (FORCE || !cached || cached.outHash != outHash) {
-			await util.wipe(BUILD_OUTPUT_ROOT);
+			await util.wipe(project.BUILD_OUTPUT_ROOT);
 			await compileAll(config);
 		}
 		await writeCache({inHash: hash, outHash: outHash});
