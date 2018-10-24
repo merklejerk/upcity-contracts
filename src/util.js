@@ -46,10 +46,10 @@ async function writeFilePath(filepath, data, opts) {
 	return fs.writeFile(filepath, data, opts);
 }
 
-async wipe(root) {
+async function wipe(root) {
 	root = path.resolve(root);
-	const contents = await fs.readdir(root);
-	return Promise.all(_.map(content,s f => fse.remove(f)));
+	const contents = _.map(await fs.readdir(root), f => path.resolve(root, f));
+	return Promise.all(_.map(contents, f => fse.remove(f)));
 }
 
 module.exports = {

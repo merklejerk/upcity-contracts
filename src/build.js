@@ -27,7 +27,6 @@ async function getSolidityFilesHash(root) {
 
 async function generateSource(config) {
 	const files = await getSolidityFiles(project.SOL_ROOT);
-	console.log(files);
 	const promises = [];
 	for (let f of files) {
 		promises.push((async () => {
@@ -53,13 +52,13 @@ class CompilationError extends Error {};
 class ImportError extends Error {};
 
 async function compileAll(config) {
-	const files = getSolidityFiles(BUILD_SOL_ROOT);
+	const files = await getSolidityFiles(BUILD_SOL_ROOT);
 	const inputs = _.zipObject(files,
-		await Promise.all(_.map(files, f => fs.readFile(f))));
+		await Promise.all(_.map(files, f => fs.readFile(f, 'utf-8'))));
 	const findImport = (name) => {
 			console.log('resolve', name);
 		};
-	const output = solc.compile(inputs, config.optimizer || 0, findImport);
+	const output = solc.compile({sources: inputs}, config.optimizer || 0, findImport);
 	if (output.errors.length) {
 		throw new CompilationError(
 			_.map(output.errors, e => e.formattedMessage || e).join('\n'));
