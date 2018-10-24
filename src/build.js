@@ -30,7 +30,6 @@ async function generateSource(config) {
 			const after = preprocessCode(before, config.defs);
 			const dst = util.transplantFilePath(f,
 				project.SOL_ROOT, project.BUILD_SOL_ROOT);
-			const dst = getCodeDestinationPath(f);
 			return util.writeFilePath(dst, after);
 		})());
 	}
