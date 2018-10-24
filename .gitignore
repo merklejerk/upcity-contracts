@@ -1,4 +1,5 @@
 /node_modules
-/.truffle/*
-!/truffle/truffle-config.js
-
+/build/output/*.json
+/build/src/*.sol
+/build/.cache.json
+**/*.log

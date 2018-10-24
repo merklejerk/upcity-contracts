@@ -9,7 +9,7 @@ using SafeMath for uint256;
 /// @title Bancor meta-market for UpCity's resources.
 contract UpcityMarket is BancorFormula {
 
-	uint32 constant ONE_MILLION = 1000000;
+	uint32 constant PPM_ONE = 1000000;
 
 	struct Market {
 		ResourceToken token;
@@ -29,7 +29,7 @@ contract UpcityMarket is BancorFormula {
 	/// @param cw The bancor connector weight for all markets, in ppm.
 	constructor(address[] _tokens, uint32 cw) payable public {
 		require(msg.value >= _tokens.length);
-		require(cw <= ONE_MILLION);
+		require(cw <= PPM_ONE);
 		connectorWeight = cw;
 		for (uint8 i = 0; i < _tokens.length; i++) {
 			address addr = _tokens[i];
@@ -60,7 +60,7 @@ contract UpcityMarket is BancorFormula {
 		Market storage market = _markets[resource];
 		require(address(market.token) == resource);
 		return (((1 ether) * market.funds) /
-			(market.token.totalSupply() * connectorWeight)) / ONE_MILLION;
+			(market.token.totalSupply() * connectorWeight)) / PPM_ONE;
 	}
 
 	/// @dev Buy some tokens with ether.

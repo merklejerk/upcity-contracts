@@ -1,10 +1,24 @@
 {
-  "name": "upcity-contracts",
-  "version": "0.0.1",
-  "description": "Ethereum Smart Contracts for upcity.app",
-  "main": "index.js",
-  "repository": "https://github.com/merklejerk/upcity-contracts",
-  "author": "Lawrence <me@merklejerk.com>",
-  "license": "Apache-2.0",
-  "private": false
+	"name": "upcity-contracts",
+	"version": "0.0.1",
+	"description": "Ethereum Smart Contracts for https://upcity.app",
+	"main": "index.js",
+	"repository": "https://github.com/merklejerk/upcity-contracts",
+	"author": "Lawrence Forman <me@merklejerk.com>",
+	"license": "Apache-2.0",
+	"private": false,
+	"scripts": {
+		"build": "node src/build",
+		"test": "TARGET=test src/build && node src/test",
+		"deploy": "TARGET=release node src/build && node src/deploy"
+ },
+	"devDependencies": {
+		"flex-contract": "^1.4.6",
+		"ganache-cli": "^6.1.8",
+		"lodash": "^4.17.11",
+		"mocha": "^5.2.0",
+		"mz": "^2.7.0",
+		"preprocessor": "^1.4.0",
+		"solc": "^0.4.25"
+	 }
 }

@@ -1,7 +1,7 @@
 pragma solidity ^0.4.24;
 
 /// @dev Definition for a resource token used by upcity.
-interface ResourceToken {
+interface IResourceToken {
 	function totalSupply() public view returns (uint256);
 	function balanceOf(address who) public view returns (uint256);
 	function transfer(address to, uint256 amt) public returns (bool);
