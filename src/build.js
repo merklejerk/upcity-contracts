@@ -28,6 +28,8 @@ async function generateSource(config) {
 		promises.push((async () => {
 			const before = await fs.readFile(f);
 			const after = preprocessCode(before, config.defs);
+			const dst = util.transplantFilePath(f,
+				project.SOL_ROOT, project.BUILD_SOL_ROOT);
 			const dst = getCodeDestinationPath(f);
 			return util.writeFilePath(dst, after);
 		})());
@@ -37,11 +39,6 @@ async function generateSource(config) {
 
 function preprocessCode(input, defs) {
 	return new Preprocessor(input).process(defs);
-}
-
-function getCodeDestinationPath(original) {
-	return util.transplantFilePath(
-		path.resolve(original), project.SOL_ROOT, project.BUILD_SOL_ROOT);
 }
 
 class CompilationError extends Error {};
