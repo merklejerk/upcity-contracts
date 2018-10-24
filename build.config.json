@@ -4,6 +4,7 @@
 	},
 	"release": {
 		"default": true,
-		"defs": {}
+		"defs": {},
+		"optimizer": 200
 	}
 }
