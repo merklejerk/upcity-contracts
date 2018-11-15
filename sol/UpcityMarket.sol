@@ -1,18 +1,18 @@
 pragma solidity ^0.4.24;
 
-import {SafeMath} from './base/open-zeppelin/SafeMath.sol';
-import {BancorFormula} from './base/bancor/BancorFormula.sol';
-import {ResourceToken} from './ResourceToken.sol';
-
-using SafeMath for uint256;
+import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-solidity/9b3710465583284b8c4c5d2245749246bb2e0094/contracts/math/SafeMath.sol';
+import './base/bancor/BancorFormula.sol';
+import './IResourceToken.sol';
 
 /// @title Bancor meta-market for UpCity's resources.
 contract UpcityMarket is BancorFormula {
 
-	uint32 constant PPM_ONE = 1000000;
+	using SafeMath for uint256;
+
+	uint32 constant PPM_ONE = $${1e6};
 
 	struct Market {
-		ResourceToken token;
+		IResourceToken token;
 		uint256 funds;
 	}
 
@@ -34,7 +34,7 @@ contract UpcityMarket is BancorFormula {
 		for (uint8 i = 0; i < _tokens.length; i++) {
 			address addr = _tokens[i];
 			tokens.push(addr);
-			ResourceToken token = ResourceToken(addr);
+			IResourceToken token = IResourceToken(addr);
 			Market storage market = _markets[addr];
 			market.token = token;
 			market.funds = msg.value / _tokens.length;

@@ -9,12 +9,14 @@
 	"private": false,
 	"scripts": {
 		"build": "node src/build",
-		"test": "TARGET=test src/build && node src/test",
+		"test": "TARGET=test node src/build && mocha --timeout 8000 test/*.js",
 		"deploy": "TARGET=release node src/build && node src/deploy",
 		"clean": "node src/clean"
 	},
 	"devDependencies": {
-		"flex-contract": "^1.4.6",
+		"bn-str-256": "^1.9.1",
+		"ethereumjs-util": "^6.0.0",
+		"flex-contract": "^1.5.1",
 		"fs-extra": "^7.0.0",
 		"ganache-cli": "^6.1.8",
 		"lodash": "^4.17.11",
@@ -22,7 +24,7 @@
 		"mkdirp": "^0.5.1",
 		"mocha": "^5.2.0",
 		"mz": "^2.7.0",
-		"preprocessor": "^1.4.0",
-		"solc": "^0.4.25"
+		"solc": "^0.4.25",
+		"solpp": "^0.6.1"
 	}
 }

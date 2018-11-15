@@ -1,5 +1,3 @@
 /node_modules
-/build/output/*
-/build/src/*
-/build/cache.json
+/build
 **/*.log

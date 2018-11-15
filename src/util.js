@@ -6,6 +6,13 @@ const promisify = require('util').promisify;
 const mkdirp = promisify(require('mkdirp'));
 const crypto = require('crypto');
 
+async function hashFiles(files) {
+	const hash = crypto.createHash('sha256');
+	for (let f of files)
+		hash.update(await fs.readFile(f), 'utf-8');
+	return hash.digest('hex');
+}
+
 async function getTreeHash(root, opts={}) {
 	const files = await getTreeFiles(root, {filter: opts.filter});
 	const hash = crypto.createHash('sha256');
@@ -46,16 +53,40 @@ async function writeFilePath(filepath, data, opts) {
 	return fs.writeFile(filepath, data, opts);
 }
 
-async function wipe(root) {
+async function wipe(root, opts={}) {
+	const filter = opts.filter;
 	root = path.resolve(root);
-	const contents = _.map(await fs.readdir(root), f => path.resolve(root, f));
-	return Promise.all(_.map(contents, f => fse.remove(f)));
+	try {
+		let contents = _.map(await fs.readdir(root), f => path.resolve(root, f));
+		const trash = [];
+		for (let f of contents) {
+			if (filter && !filter(f))
+				continue;
+			const st = await fs.stat(f);
+			if (st.isDirectory())
+				await wipe(f, opts);
+			else
+				await fs.unlink(f);
+		}
+		if ((await fs.readdir(root)).length == 0)
+			fs.rmdir(root);
+	} catch (err) {
+		if (err.code == 'ENOENT')
+			return;
+		throw err;
+	}
+}
+
+async function wipeExcept(root, files) {
+	return wipe(root, {filter: f => !_.includes(files, f)});
 }
 
 module.exports = {
+	hashFiles: hashFiles,
 	getTreeHash: getTreeHash,
 	getTreeFiles: getTreeFiles,
 	transplantFilePath: transplantFilePath,
 	writeFilePath: writeFilePath,
-	wipe: wipe
+	wipe: wipe,
+	wipeExcept: wipeExcept
 };
