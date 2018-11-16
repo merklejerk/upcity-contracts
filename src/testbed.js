@@ -13,7 +13,8 @@ const project = require('./project');
 process.on('unhandledRejection', (err) => {});
 
 const ONE_TOKEN = bn.parse('1e18');
-const MAX_UINT = bn.pow(2, 256);
+const MAX_UINT = bn.sub(bn.pow(2, 256), 1);
+const ZERO_ADDRESS = '0x' + _.repeat('0', 40);
 
 function createAccounts(accounts, balance=ONE_TOKEN) {
 	if (_.isArray(accounts)) {
@@ -94,4 +95,5 @@ module.exports = async function(opts={}) {
 
 module.exports.ONE_TOKEN = ONE_TOKEN;
 module.exports.MAX_UINT = MAX_UINT;
+module.exports.ZERO_ADDRESS = ZERO_ADDRESS;
 module.exports.randomAddress = randomAddress;
