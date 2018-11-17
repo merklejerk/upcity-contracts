@@ -22,16 +22,49 @@ contract UpcityMarket is BancorFormula {
 	uint32 public connectorWeight;
 	/// @dev Indiividual markets for each resource.
 	mapping(address=>Market) private _markets;
+	/// @dev Creator of this contract, who can call init().
+	address private _creator;
 
-	/// @dev Create and fund the markets.
-	/// Attached ether will be distributed evenly across all token markets.
-	/// @param _tokens The UpcityResourceERC20 address for each token/resource.
-	/// @param cw The bancor connector weight for all markets, in ppm.
-	constructor(address[] _tokens, uint32 cw) payable public {
-		require(msg.value >= _tokens.length);
+	event Bought(address resource, address to, uint256 value, uint256 bought);
+	event Sold(address resource, address to, uint256 sold, uint256 value);
+
+	/// @dev Deploy the market.
+	/// init() needs to be called before market functions will work.
+	/// @param cw the bancor "connector weight" for all token markets, in ppm.
+	constructor(uint32 cw) public {
 		require(cw <= PPM_ONE);
 		connectorWeight = cw;
-		for (uint8 i = 0; i < _tokens.length; i++) {
+		_creator = msg.sender;
+	}
+
+	/// @dev Only callable by contract creator.
+	modifier onlyCreator() {
+		require(msg.sender == _creator);
+		_;
+	}
+
+	/// @dev Only callable when the contract has been initialized.
+	modifier onlyInitialized() {
+		require(tokens.length > 0);
+		_;
+	}
+
+	/// @dev Only callable when the contract is uninitialized.
+	modifier onlyUninitialized() {
+		require(tokens.length == 0);
+		_;
+	}
+
+	/// @dev Initialize and fund the markets.
+	/// This is the only privileged function and can only be called once by
+	/// the contract creator.
+	/// Attached ether will be distributed evenly across all token markets.
+	/// @param _tokens The address of each token.
+	function init(address[] _tokens)
+			public payable onlyCreator onlyUninitialized {
+
+		require(msg.value >= _tokens.length);
+		for (uint256 i = 0; i < _tokens.length; i++) {
 			address addr = _tokens[i];
 			tokens.push(addr);
 			IResourceToken token = IResourceToken(addr);
@@ -45,7 +78,7 @@ contract UpcityMarket is BancorFormula {
 
 	/// @dev Fund the markets.
 	/// Attached ether will be distributed evenly across all token markets.
-	function() payable public {
+	function() payable onlyInitialized public {
 		for (uint8 i = 0; i < tokens.length; i++) {
 			Market storage market = _markets[tokens[i]];
 			market.funds = market.funds.add(msg.value/tokens.length);
@@ -68,7 +101,7 @@ contract UpcityMarket is BancorFormula {
 	/// @param to Recipient of tokens.
 	/// @return The number of tokens purchased.
 	function buy(address resource, address to)
-			public payable returns (uint256) {
+			public payable onlyInitialized returns (uint256) {
 
 		require(resource != 0x0);
 		Market storage market = _markets[resource];
@@ -79,6 +112,7 @@ contract UpcityMarket is BancorFormula {
 			supply, market.funds, connectorWeight, msg.value);
 		market.funds = market.funds.add(msg.value);
 		market.token.mint(to, bought);
+		emit Bought(resource, to, msg.value, bought);
 		return bought;
 	}
 
@@ -88,7 +122,7 @@ contract UpcityMarket is BancorFormula {
 	/// @param to Recipient of ether.
 	/// @return The number of ether received.
 	function sell(address resource, uint256 amount, address to)
-			public returns (uint256) {
+			public onlyInitialized returns (uint256) {
 
 		require(resource != 0x0);
 		Market storage market = _markets[resource];
@@ -100,6 +134,7 @@ contract UpcityMarket is BancorFormula {
 			supply, market.funds, connectorWeight, amount);
 		market.funds = market.funds.sub(funds);
 		to.transfer(funds);
+		emit Sold(resource, to, amount, funds);
 		return funds;
 	}
 }

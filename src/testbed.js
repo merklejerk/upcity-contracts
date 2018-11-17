@@ -80,6 +80,7 @@ module.exports = async function(opts={}) {
 		unlocked_accounts: _.map(accounts, a => a.address)
 	};
 	const provider = ganache.provider(providerOpts);
+	provider.setMaxListeners(4096);
 	provider.on('revert', (err) => console.log(err));
 	const artifacts = await Promise.all(
 		_.map(opts.contracts || [], n => project.getArtifact(n)));
