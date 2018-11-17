@@ -16,7 +16,7 @@ const ONE_TOKEN = bn.parse('1e18');
 const MAX_UINT = bn.sub(bn.pow(2, 256), 1);
 const ZERO_ADDRESS = '0x' + _.repeat('0', 40);
 
-function createAccounts(accounts, balance=ONE_TOKEN) {
+function createAccounts(accounts, balance=bn.mul(100, ONE_TOKEN)) {
 	if (_.isArray(accounts)) {
 		return _.map(accounts, acct => {
 			if (_.isString(acct)) {
@@ -84,9 +84,13 @@ module.exports = async function(opts={}) {
 	provider.on('revert', (err) => console.log(err));
 	const artifacts = await Promise.all(
 		_.map(opts.contracts || [], n => project.getArtifact(n)));
+	const contractOpts = {
+		provider: provider,
+		gasBonus: 0.75
+	};
 	const contracts = _.zipObject(opts.contracts || [],
 		_.times(artifacts.length,
-			i => new FlexContract(artifacts[i], {provider: provider})));
+			i => new FlexContract(artifacts[i], contractOpts)));
 	return {
 		provider: provider,
 		accounts: _.map(accounts, a => a.address),

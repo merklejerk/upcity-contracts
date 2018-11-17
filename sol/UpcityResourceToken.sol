@@ -69,4 +69,10 @@ contract UpcityResourceToken is ERC20 {
 		}
 		return super.transferFrom(from, to, amt);
 	}
+
+	// #if TEST
+	function __mint(address to, uint256 amt) public {
+		_mint(to, amt);
+	}
+	// #endif
 }

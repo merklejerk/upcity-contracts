@@ -5,8 +5,8 @@ interface IResourceToken {
 	function totalSupply() external view returns (uint256);
 	function balanceOf(address who) external view returns (uint256);
 	function transfer(address to, uint256 amt) external returns (bool);
-	function mint(address to, uint256 amt) external returns (bool);
-	function burn(address from, uint256 amt) external returns (bool);
+	function mint(address to, uint256 amt) external;
+	function burn(address from, uint256 amt) external;
 	function authority() external view returns (address);
 	function decimals() external view returns (uint8);
 }

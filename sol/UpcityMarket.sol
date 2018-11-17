@@ -137,4 +137,12 @@ contract UpcityMarket is BancorFormula {
 		emit Sold(resource, to, amount, funds);
 		return funds;
 	}
+
+	// #if TEST
+	function __uninitialize() public {
+		tokens.length = 0;
+		if (address(this).balance > 0)
+			address(0x0).transfer(address(this).balance);
+	}
+	// #endif
 }
