@@ -7,6 +7,6 @@ interface IResourceToken {
 	function transfer(address to, uint256 amt) external returns (bool);
 	function mint(address to, uint256 amt) external;
 	function burn(address from, uint256 amt) external;
-	function authority() external view returns (address);
+	function isAuthority(address addr) external view returns (bool);
 	function decimals() external view returns (uint8);
 }

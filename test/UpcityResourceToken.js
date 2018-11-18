@@ -19,7 +19,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	beforeEach(async function() {
 		return this.contract.new(
-			TOKEN_NAME, TOKEN_SYMBOL, this.authority, RESERVE);
+			TOKEN_NAME, TOKEN_SYMBOL, RESERVE, [this.authority]);
 	});
 
 	it('Can get the token name', async function() {
@@ -33,8 +33,8 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	});
 
 	it('Can get the authority', async function() {
-		const auth = await this.contract.authority();
-		assert.equal(auth, this.authority);
+		assert.equal(true,
+			await this.contract.isAuthority(this.authority));
 	});
 
 	it('Authority can mint', async function() {

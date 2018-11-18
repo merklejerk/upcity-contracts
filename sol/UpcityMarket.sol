@@ -71,7 +71,7 @@ contract UpcityMarket is BancorFormula {
 			Market storage market = _markets[addr];
 			market.token = token;
 			market.funds = msg.value / _tokens.length;
-			require(market.token.authority() == address(this));
+			require(market.token.isAuthority(address(this)));
 		}
 		_bancorInit();
 	}

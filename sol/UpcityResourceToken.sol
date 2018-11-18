@@ -9,27 +9,28 @@ contract UpcityResourceToken is ERC20 {
 	string public name;
 	string public symbol;
 	uint8 public constant decimals = 18;
-	address public authority;
+	mapping(address=>bool) public isAuthority;
 
 	/// @dev Creates the contract.
 	/// @param _name Token name
 	/// @param _symbol Token symbol
-	/// @param _authority Who can mint tokens and burn arbitrarily
 	/// @param reserve Amount of tokens the contract instantly mint and will keep
+	/// @param _authorities Who can mint and burn tokens arbitrarily
 	/// locked up forever.
 	constructor(
-			string _name, string _symbol, address _authority, uint256 reserve)
+			string _name, string _symbol, uint256 reserve, address[] _authorities)
 			public {
 
 		assert(reserve >= 0);
 		name = _name;
 		symbol = _symbol;
-		authority = _authority;
+		for (uint256 i = 0; i < _authorities.length; i++)
+			isAuthority[_authorities[i]] = true;
 		_mint(address(this), reserve);
 	}
 
 	modifier onlyAuthority() {
-		require(msg.sender == authority);
+		require(isAuthority[msg.sender]);
 		_;
 	}
 
@@ -69,10 +70,4 @@ contract UpcityResourceToken is ERC20 {
 		}
 		return super.transferFrom(from, to, amt);
 	}
-
-	// #if TEST
-	function __mint(address to, uint256 amt) public {
-		_mint(to, amt);
-	}
-	// #endif
 }

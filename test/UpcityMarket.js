@@ -24,7 +24,8 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		for (let i = 0; i < NUM_TOKENS; i++) {
 			const token = this.contracts['UpcityResourceToken'].clone();
 			await token.new(
-				`Token-${i}`, `TTK${i}`, this.market.address, RESERVE);
+				`Token-${i}`, `TTK${i}`, RESERVE,
+				[this.market.address, this.accounts[0]]);
 			this.tokens.push(token);
 		}
 		await this.market.init(
@@ -63,7 +64,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const [seller] = _.sampleSize(this.users, 1);
 		const token = _.sample(this.tokens);
 		const amount = bn.mul(ONE_TOKEN, 0.5);
-		await token.__mint(seller, amount);
+		await token.mint(seller, amount);
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
@@ -83,7 +84,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const amount = 0;
 		const balance = bn.mul(ONE_TOKEN, 1);
-		await token.__mint(seller, balance);
+		await token.mint(seller, balance);
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
@@ -95,7 +96,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const amount = bn.add(balance, 1);
-		await token.__mint(seller, balance);
+		await token.mint(seller, balance);
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
@@ -130,7 +131,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const [seller] = _.sampleSize(this.users, 2);
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
-		await token.__mint(seller, balance);
+		await token.mint(seller, balance);
 		const tx = await this.market.sell(
 			token.address, balance, seller,
 			{from: seller});
@@ -145,7 +146,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const amount = bn.mul(balance, 0.1);
-		await token.__mint(seller, balance);
+		await token.mint(seller, balance);
 		const tx = await this.market.sell(
 			token.address, amount, seller,
 			{from: seller});
