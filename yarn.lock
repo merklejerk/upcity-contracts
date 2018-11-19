@@ -2061,10 +2061,10 @@ find-up@^2.1.0:
   dependencies:
     locate-path "^2.0.0"
 
-flex-contract@^1.5.3:
-  version "1.5.3"
-  resolved "https://registry.yarnpkg.com/flex-contract/-/flex-contract-1.5.3.tgz#a9788f10de16859ecad2af1f95c6b3bb7a05b3ed"
-  integrity sha512-wiAD2UySeS5Ove9s0tZ5RnqItXhuMlb0quo4Lg/q0yi8V0yA6IEOUhb+D0SKb/s0N5g1+Xq628twMLnc/S9OMg==
+flex-contract@^1.6.0:
+  version "1.6.0"
+  resolved "https://registry.yarnpkg.com/flex-contract/-/flex-contract-1.6.0.tgz#15a6281faef40dd588c7bf09b2bf065cc102ef17"
+  integrity sha512-7k77vf8kZDNnE+YLq5tZKRvkzsPky3mpsUCt/xBJnjVIoxWp0/9zZXYMHaNTeDZuI0wrLs5rZDICjc3p6qSaLw==
   dependencies:
     bignumber.js "^7.2.1"
     ethereumjs-util "^5.2.0"

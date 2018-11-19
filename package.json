@@ -16,7 +16,8 @@
 	"devDependencies": {
 		"bn-str-256": "^1.9.1",
 		"ethereumjs-util": "^6.0.0",
-		"flex-contract": "^1.5.3",
+		"flex-contract": "^1.6.0",
+		"flex-ether": "^1.1.4",
 		"fs-extra": "^7.0.0",
 		"ganache-cli": "^6.1.8",
 		"lodash": "^4.17.11",

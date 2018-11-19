@@ -94,7 +94,9 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const amount = 100;
 		await this.contract.mint(sender, amount, {from: this.authority});
 		await this.contract.transfer(receiver, amount, {from: sender});
-		assert.equal(bn.parse(amount), await this.contract.balanceOf(receiver));
+		assert.equal(
+			await this.contract.balanceOf(receiver),
+			bn.parse(amount));
 	});
 
 	it('Can transferFrom entire balance', async function() {
@@ -103,7 +105,9 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.contract.mint(wallet, amount, {from: this.authority});
 		await this.contract.approve(sender, MAX_UINT, {from: wallet});
 		await this.contract.transferFrom(wallet, receiver, amount, {from: sender});
-		assert.equal(bn.parse(amount), await this.contract.balanceOf(receiver));
+		assert.equal(
+			await this.contract.balanceOf(receiver),
+			bn.parse(amount));
 	});
 
 	it('Can transfer < balance', async function() {
@@ -111,7 +115,9 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const amount = 100;
 		await this.contract.mint(sender, amount, {from: this.authority});
 		await this.contract.transfer(receiver, amount - 1, {from: sender});
-		assert.equal(bn.parse(amount - 1), await this.contract.balanceOf(receiver));
+		assert.equal(
+			await this.contract.balanceOf(receiver),
+			bn.parse(amount - 1));
 	});
 
 	it('Can transferFrom < balance', async function() {
@@ -120,7 +126,9 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.contract.mint(wallet, amount, {from: this.authority});
 		await this.contract.approve(sender, MAX_UINT, {from: wallet});
 		await this.contract.transferFrom(wallet, receiver, amount - 1, {from: sender});
-		assert.equal(bn.parse(amount - 1), await this.contract.balanceOf(receiver));
+		assert.equal(
+			await this.contract.balanceOf(receiver),
+			bn.parse(amount - 1));
 	});
 
 	it('Transfer to 0x0 burns tokens', async function() {
@@ -128,7 +136,9 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const amount = 100;
 		await this.contract.mint(sender, amount, {from: this.authority});
 		await this.contract.transfer(ZERO_ADDRESS, amount, {from: sender});
-		assert.equal(bn.parse(RESERVE), await this.contract.totalSupply());
+		assert.equal(
+			await this.contract.totalSupply(),
+			bn.parse(RESERVE));
 	});
 
 	it('TransferFrom to contract burns tokens', async function() {
@@ -137,6 +147,8 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.contract.mint(wallet, amount, {from: this.authority});
 		await this.contract.approve(sender, MAX_UINT, {from: wallet});
 		await this.contract.transferFrom(wallet, this.contract.address, amount, {from: sender});
-		assert.equal(bn.parse(RESERVE), await this.contract.totalSupply());
+		assert.equal(
+			await this.contract.totalSupply(),
+			bn.parse(RESERVE));
 	});
 });

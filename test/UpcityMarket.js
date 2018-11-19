@@ -112,10 +112,12 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const event = tx.findEvent('Bought',
 			{resource: token.address, to: buyer});
 		assert(!_.isNil(event));
-		assert.equal(event.args.bought, await token.balanceOf(buyer));
+		assert.equal(
+			await token.balanceOf(buyer),
+			event.args.bought);
 	});
 
-	it('Can buy token for someone else', async function() {
+	it('Can buy token for another', async function() {
 		const [payer, dst] = _.sampleSize(this.users, 2);
 		const token = _.sample(this.tokens);
 		const payment = bn.mul(ONE_TOKEN, 0.1);
@@ -124,13 +126,16 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const event = tx.findEvent('Bought',
 			{resource: token.address, to: dst});
 		assert(!_.isNil(event));
-		assert.equal(event.args.bought, await token.balanceOf(dst));
+		assert.equal(
+			await token.balanceOf(dst),
+			event.args.bought);
 	});
 
 	it('Can sell all tokens', async function() {
-		const [seller] = _.sampleSize(this.users, 2);
+		const [seller] = _.sampleSize(this.users, 1);
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
+		const initialEthBalance = await this.eth.getBalance(seller);
 		await token.mint(seller, balance);
 		const tx = await this.market.sell(
 			token.address, balance, seller,
@@ -138,14 +143,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const event = tx.findEvent('Sold',
 			{resource: token.address, to: seller});
 		assert(!_.isNil(event));
-		assert.equal(bn.parse(0), await token.balanceOf(seller));
+		assert.equal(
+			await token.balanceOf(seller),
+			bn.parse(0), );
+		assert(bn.gt(await this.eth.getBalance(seller), initialEthBalance));
 	});
 
 	it('Can sell some tokens', async function() {
-		const [seller] = _.sampleSize(this.users, 2);
+		const [seller] = _.sampleSize(this.users, 1);
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const amount = bn.mul(balance, 0.1);
+		const initialEthBalance = await this.eth.getBalance(seller);
 		await token.mint(seller, balance);
 		const tx = await this.market.sell(
 			token.address, amount, seller,
@@ -153,7 +162,28 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const event = tx.findEvent('Sold',
 			{resource: token.address, to: seller});
 		assert(!_.isNil(event));
-		assert.equal(bn.sub(balance, amount),
-			await token.balanceOf(seller));
+		assert.equal(
+			await token.balanceOf(seller),
+			bn.sub(balance, amount));
+		assert(bn.gt(await this.eth.getBalance(seller), initialEthBalance));
+	});
+
+	it('Can sell tokens to another', async function() {
+		const [seller, dst] = _.sampleSize(this.users, 2);
+		const token = _.sample(this.tokens);
+		const balance = bn.mul(ONE_TOKEN, 1);
+		const amount = bn.mul(balance, 0.1);
+		const initialEthBalance = await this.eth.getBalance(dst);
+		await token.mint(seller, balance);
+		const tx = await this.market.sell(
+			token.address, amount, dst,
+			{from: seller});
+		const event = tx.findEvent('Sold',
+			{resource: token.address, to: dst});
+		assert(!_.isNil(event));
+		assert.equal(
+			await token.balanceOf(seller),
+			bn.sub(balance, amount));
+		assert(bn.gt(await this.eth.getBalance(dst), initialEthBalance));
 	});
 });

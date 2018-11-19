@@ -7,6 +7,7 @@ const ganache = require('ganache-cli');
 const bn = require('bn-str-256');
 const ethjs = require('ethereumjs-util');
 const FlexContract = require('flex-contract');
+const FlexEther = require('flex-ether');
 const process = require('process');
 const project = require('./project');
 
@@ -80,13 +81,12 @@ module.exports = async function(opts={}) {
 		unlocked_accounts: _.map(accounts, a => a.address)
 	};
 	const provider = ganache.provider(providerOpts);
+	const eth = new FlexEther({provider: provider, gasBonus: 0.75});
 	provider.setMaxListeners(4096);
-	provider.on('revert', (err) => console.log(err));
 	const artifacts = await Promise.all(
 		_.map(opts.contracts || [], n => project.getArtifact(n)));
 	const contractOpts = {
-		provider: provider,
-		gasBonus: 0.75
+		eth: eth,
 	};
 	const contracts = _.zipObject(opts.contracts || [],
 		_.times(artifacts.length,
@@ -94,6 +94,7 @@ module.exports = async function(opts={}) {
 	return {
 		provider: provider,
 		accounts: _.map(accounts, a => a.address),
+		eth: eth,
 		contracts: contracts
 	};
 };
