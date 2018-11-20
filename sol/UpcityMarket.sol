@@ -89,9 +89,8 @@ contract UpcityMarket is BancorFormula {
 	/// @param resource The address of the resource contract.
 	/// @return The price, in wei.
 	function getPrice(address resource) public view returns (uint256) {
-		require(resource != 0x0);
 		Market storage market = _markets[resource];
-		require(address(market.token) == resource);
+		require(address(market.token) == resource, 'invalid resource');
 		return (((1 ether) * market.funds) /
 			(market.token.totalSupply() * connectorWeight)) / PPM_ONE;
 	}
@@ -103,10 +102,9 @@ contract UpcityMarket is BancorFormula {
 	function buy(address resource, address to)
 			public payable onlyInitialized returns (uint256) {
 
-		require(resource != 0x0);
 		Market storage market = _markets[resource];
-		require(address(market.token) == resource);
-		require(msg.value > 0);
+		require(address(market.token) == resource, 'invalid resource');
+		require(msg.value > 0, 'tx value must be nonzero');
 		uint256 supply = market.token.totalSupply();
 		uint256 bought = calculatePurchaseReturn(
 			supply, market.funds, connectorWeight, msg.value);
@@ -124,10 +122,9 @@ contract UpcityMarket is BancorFormula {
 	function sell(address resource, uint256 amount, address to)
 			public onlyInitialized returns (uint256) {
 
-		require(resource != 0x0);
 		Market storage market = _markets[resource];
-		require(address(market.token) == resource);
-		require(amount > 0);
+		require(address(market.token) == resource, 'invalid resource');
+		require(amount > 0, 'sell amount must be nonzero');
 		uint256 supply = market.token.totalSupply();
 		market.token.burn(msg.sender, amount);
 		uint256 funds = calculateSaleReturn(

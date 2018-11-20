@@ -21,7 +21,7 @@ contract UpcityResourceToken is ERC20 {
 			string _name, string _symbol, uint256 reserve, address[] _authorities)
 			public {
 
-		assert(reserve >= 0);
+		require(reserve >= 0, 'reserve must be nonzero');
 		name = _name;
 		symbol = _symbol;
 		for (uint256 i = 0; i < _authorities.length; i++)
@@ -30,7 +30,7 @@ contract UpcityResourceToken is ERC20 {
 	}
 
 	modifier onlyAuthority() {
-		require(isAuthority[msg.sender]);
+		require(isAuthority[msg.sender], 'caller is not an authority');
 		_;
 	}
 
@@ -43,7 +43,8 @@ contract UpcityResourceToken is ERC20 {
 	/// @dev Burn tokens held by an address.
 	/// Only the authority may call this.
 	function burn(address from, uint256 amt) public onlyAuthority {
-		require(from != 0x0 && from != address(this));
+		require(from != 0x0 && from != address(this),
+			'cannot burn from token contract');
 		_burn(from, amt);
 	}
 

@@ -30,7 +30,7 @@ contract UpcityBase is UpcityMath {
 
 	struct Credits {
 		uint256[NUM_RESOURCES] resources;
-		uint256 eth;
+		uint256 funds;
 	}
 
 	struct BlockStats {
