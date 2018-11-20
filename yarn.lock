@@ -121,7 +121,7 @@ async-eventemitter@^0.2.2:
   dependencies:
     async "^2.4.0"
 
-async-eventemitter@ahultgren/async-eventemitter#fa06e39e56786ba541c180061dbf2c0a5bbf951c:
+"async-eventemitter@github:ahultgren/async-eventemitter#fa06e39e56786ba541c180061dbf2c0a5bbf951c":
   version "0.2.3"
   resolved "https://codeload.github.com/ahultgren/async-eventemitter/tar.gz/fa06e39e56786ba541c180061dbf2c0a5bbf951c"
   dependencies:
@@ -1014,9 +1014,9 @@ camelcase@^4.1.0:
   integrity sha1-1UVjW+HjPFQmScaRc+Xeas+uNN0=
 
 caniuse-lite@^1.0.30000844:
-  version "1.0.30000907"
-  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30000907.tgz#0b9899bde53fb1c30e214fb12402361e02ff5c42"
-  integrity sha512-No5sQ/OB2Nmka8MNOOM6nJx+Hxt6MQ6h7t7kgJFu9oTuwjykyKRSBP/+i/QAyFHxeHB+ddE0Da1CG5ihx9oehQ==
+  version "1.0.30000909"
+  resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30000909.tgz#697e8f447ca5f758e7c6cef39ec429ce18b908d3"
+  integrity sha512-4Ix9ArKpo3s/dLGVn/el9SAk6Vn2kGhg8XeE4eRTsGEsmm9RnTkwnBsVZs7p4wA8gB+nsgP36vZWYbG8a4nYrg==
 
 caseless@~0.12.0:
   version "0.12.0"
@@ -2086,9 +2086,9 @@ flex-ether@^1.1.4:
     web3 "^1.0.0-beta.34"
 
 follow-redirects@^1.3.0:
-  version "1.5.9"
-  resolved "https://registry.yarnpkg.com/follow-redirects/-/follow-redirects-1.5.9.tgz#c9ed9d748b814a39535716e531b9196a845d89c6"
-  integrity sha512-Bh65EZI/RU8nx0wbYF9shkFZlqLP+6WT/5FnA3cE/djNSuKNHJEinGGZgu/cQEkeeb2GdFOgenAmn8qaqYke2w==
+  version "1.5.10"
+  resolved "https://registry.yarnpkg.com/follow-redirects/-/follow-redirects-1.5.10.tgz#7b7a9f9aea2fdff36786a94ff643ed07f4ff5e2a"
+  integrity sha512-0V5l4Cizzvqt5D44aTXbFZz+FtyXV1vrDN6qrelxtfYQKW0KO0W2T/hkE8xvGa/540LkZlkaUjO4ailYTFtHVQ==
   dependencies:
     debug "=3.1.0"
 
@@ -2192,16 +2192,16 @@ functional-red-black-tree@^1.0.1:
   integrity sha1-GwqzvVU7Kg1jmdKcDj6gslIHgyc=
 
 ganache-cli@^6.1.8:
-  version "6.2.0"
-  resolved "https://registry.yarnpkg.com/ganache-cli/-/ganache-cli-6.2.0.tgz#8e437ccfd2a336a8622619dade02b2371e6faec7"
-  integrity sha512-8L106S75xTtjQhjFcfmYAvPnqusCqG38fT7Af+MNeJIEnr7IcBp9QWNoCxYEddOKO4J/Q16e6ZMThFawz0XsMA==
+  version "6.2.1"
+  resolved "https://registry.yarnpkg.com/ganache-cli/-/ganache-cli-6.2.1.tgz#0023588fbfd369ab420383c069b0bfc10f8dfe38"
+  integrity sha512-fUqL0rDQ/4ugpiRQu1/4k1bvBEVz+ntLE2VzOVB4KBzv07moIlUlvl7M5OsE+0QhYXNwL3s0Jqn6NrqRmrl1jA==
   dependencies:
     bn.js "4.11.8"
-    ganache-core "^2.3.0"
+    ganache-core "^2.3.1"
     source-map-support "^0.5.3"
     yargs "^11.0.0"
 
-ganache-core@^2.3.0:
+ganache-core@^2.3.1:
   version "2.3.1"
   resolved "https://registry.yarnpkg.com/ganache-core/-/ganache-core-2.3.1.tgz#c22a22edfec9c990e530c7a9736dbf09599b99bb"
   integrity sha512-I4t4P+LYUZRnGbxDseqSa5vIJ8C5e35vw5Fr7f2iMMN6jmO5TVjWWgNib60G2iL+XTbYUFmou040hHxrTaNtnA==
@@ -4079,9 +4079,9 @@ solc@^0.4.2, solc@^0.4.25:
     yargs "^4.7.1"
 
 solpp@^0.6.1:
-  version "0.6.2"
-  resolved "https://registry.yarnpkg.com/solpp/-/solpp-0.6.2.tgz#9081baf2dddaf5102d8a0b03b1c08964f0e4ba00"
-  integrity sha512-JLmxbgf+/MGgW7YrIq2LXnDvtTZFC4SiuPyorhZJFBsJIfgqCYUgM5yhfrOnT6++N11KJXW5yt9MH5vpvUs06g==
+  version "0.6.3"
+  resolved "https://registry.yarnpkg.com/solpp/-/solpp-0.6.3.tgz#30bb372b7bfb6f29e1de45ad6e407fce8a02cd93"
+  integrity sha512-vpRQlSQKsEqew0TyJQA9INpNaZKGqBz9cWSs5DKZ27ORO9DcouVJaIwS/2oqGh3r4PPn7aj3SboDrZhEeAZdAg==
   dependencies:
     antlr4 "^4.7.1"
     axios "^0.18.0"

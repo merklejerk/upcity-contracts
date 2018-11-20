@@ -122,11 +122,11 @@ contract UpcityGame is UpcityBase {
 	}
 
 	function buyTile(int32 x, int32 y) public payable returns (bool) {
+		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner != msg.sender, 'you already own this tile');
 		uint256 price = _getTilePrice(tile);
 		require(msg.value >= price, 'offer not high enough');
-		collect(tile);
 		address oldOwner = tile.owner;
 		tile.owner = msg.sender;
 		// Base price increases every time a tile is bought.
@@ -256,8 +256,8 @@ contract UpcityGame is UpcityBase {
 
 			for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 				(int32 ox, int32 oy) = ${NEIGHBOR_OFFSET(i)};
-				int32 nx = x + ox;
-				int32 ny = y + oy;
+				int32 nx = tile.position.x + ox;
+				int32 ny = tile.position.y + oy;
 				Tile storage neighbor = _getTileAt(nx, ny);
 				_payToTile(neighbor, amount / NUM_NEIGHBORS);
 			}
@@ -316,8 +316,9 @@ contract UpcityGame is UpcityBase {
 		if (amount > 0) {
 			if (recipient == 0x0)
 				fundsCollected = fundsCollected.add(amount);
-			if (!recipient.send(amount))
+			else if (!recipient.send(amount)) {
 				// Ignored.
+			}
 		}
 	}
 

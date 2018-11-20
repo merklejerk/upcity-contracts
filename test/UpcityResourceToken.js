@@ -141,6 +141,27 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			bn.parse(RESERVE));
 	});
 
+	it('Transfer to contract burns tokens', async function() {
+		const [sender] = _.sampleSize(this.users, 1);
+		const amount = 100;
+		await this.contract.mint(sender, amount, {from: this.authority});
+		await this.contract.transfer(this.contract.address, amount, {from: sender});
+		assert.equal(
+			await this.contract.totalSupply(),
+			bn.parse(RESERVE));
+	});
+
+	it('TransferFrom to 0x0 burns tokens', async function() {
+		const [sender, wallet] = _.sampleSize(this.users, 2);
+		const amount = 100;
+		await this.contract.mint(wallet, amount, {from: this.authority});
+		await this.contract.approve(sender, MAX_UINT, {from: wallet});
+		await this.contract.transferFrom(wallet, ZERO_ADDRESS, amount, {from: sender});
+		assert.equal(
+			await this.contract.totalSupply(),
+			bn.parse(RESERVE));
+	});
+
 	it('TransferFrom to contract burns tokens', async function() {
 		const [sender, wallet] = _.sampleSize(this.users, 2);
 		const amount = 100;
