@@ -10,6 +10,18 @@ const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
 const CONNECTOR_WEIGHT = Math.round(1e6 * 0.33);
 const NUM_RESOURCES = 3;
 
+function unpackDescription(r) {
+	return {
+		id: r[0],
+		x: bn.toNumber(r[1]),
+		y: bn.toNumber(r[2]),
+		timesBought: bn.toNumber(r[3]),
+		owner: r[4],
+		blocks: r[5],
+		price: bn.parse(r[6])
+	};
+}
+
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	before(async function() {
 		_.assign(this, await testbed({
@@ -44,6 +56,13 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.game.init(this.genesisUser, {from: this.authority});
 	});
 
-	it('TODO', async function() {
+	it('genesis owner owns genesis tile', async function() {
+		const d = unpackDescription(await this.game.describeTileAt(0, 0));
+		assert.equal(d.owner, this.genesisUser);
+	});
+
+	it('genesis tile has a price', async function() {
+		const d = unpackDescription(await this.game.describeTileAt(0, 0));
+		assert(bn.gt(d.price, 0));
 	});
 });

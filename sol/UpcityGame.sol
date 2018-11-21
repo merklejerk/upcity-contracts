@@ -73,6 +73,10 @@ contract UpcityGame is UpcityBase {
 		Tile storage tile = _createTileAt(0, 0);
 		tile.owner = genesisOwner;
 		tile.timesBought = 1;
+		if (tile.basePrice > 0)
+			tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
+		else
+			tile.basePrice = MINIMUM_TILE_PRICE;
 		_createNeighbors(tile.position.x, tile.position.y);
 	}
 
@@ -100,11 +104,15 @@ contract UpcityGame is UpcityBase {
 		return bytes16(keccak256(abi.encodePacked(x, y, address(this))));
 	}
 
-	function _getTileAt(int32 x, int32 y) private view returns (Tile storage) {
+	function _getTileAt(int32 x, int32 y)
+			private view returns (Tile storage) {
+
 		return _tiles[toTileId(x, y)];
 	}
 
-	function _getExistingTileAt(int32 x, int32 y) private view returns (Tile storage) {
+	function _getExistingTileAt(int32 x, int32 y)
+			private view returns (Tile storage) {
+
 		bytes16 id = toTileId(x, y);
 		Tile storage tile = _tiles[id];
 		require(tile.id == id, 'tile does not exist');
@@ -135,7 +143,9 @@ contract UpcityGame is UpcityBase {
 		price = _getTilePrice(tile);
 	}
 
-	function buyTile(int32 x, int32 y) public payable onlyInitialized returns (bool) {
+	function buyTile(int32 x, int32 y)
+			public payable onlyInitialized returns (bool) {
+
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner != msg.sender, 'you already own this tile');
@@ -204,7 +214,9 @@ contract UpcityGame is UpcityBase {
 		// #done
 	}
 
-	function collect(int32 x, int32 y) public onlyInitialized returns (bool) {
+	function collect(int32 x, int32 y)
+			public onlyInitialized returns (bool) {
+
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner == msg.sender, 'you do not own this tile');
 		require(${BLOCKTIME} > tile.lastTouchTime, 'block time is in the past');

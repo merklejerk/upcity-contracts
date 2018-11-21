@@ -50,8 +50,7 @@ contract UpcityBase is UpcityMath {
 	bytes16 constant EMPTY_BLOCKS = $${hex(2**(8*MAX_HEIGHT)-1)};
 	// 1/6
 	uint64 constant TAX_RATE = $${TO_PPM(1/NUM_NEIGHBORS)};
-	// 133.333...%
-	uint64 constant PURCHASE_PREMIUM = $${TO_PPM(1+1/3)};
+	uint256 constant MINIMUM_TILE_PRICE = $${int(ONE_TOKEN * 0.025)};
 	// 133.333...%
 	uint64 constant PURCHASE_MARKUP = $${TO_PPM(1+1/3)};
 	uint8 constant NUM_NEIGHBORS = $${NUM_NEIGHBORS};
