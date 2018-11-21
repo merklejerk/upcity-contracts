@@ -31,7 +31,7 @@ contract UpcityGame is UpcityBase {
 	IMarket private _market;
 	/// @dev Tiles by ID.
 	mapping(bytes16=>Tile) private _tiles;
-	/// @dev Who may call the claimFunds() function.
+	/// @dev Who may call the init() and claimFunds() functions.
 	mapping(address=>bool) private _authorities;
 	/// @dev Ether which has "fallen off the edge".
 	/// Increased every time ether propogates to a tile
@@ -41,7 +41,6 @@ contract UpcityGame is UpcityBase {
 	constructor(
 			address[] tokens,
 			address market,
-			address genesisOwner,
 			address[] authorities) public {
 
 		assert(tokens.length == NUM_RESOURCES);
@@ -50,16 +49,31 @@ contract UpcityGame is UpcityBase {
 		for (i = 0; i < NUM_RESOURCES; i++)
 			_tokens[i] = IResourceToken(tokens[i]);
 		_market = IMarket(market);
-		Tile storage tile = _createTileAt(0, 0);
-		tile.owner = genesisOwner;
-		tile.timesBought = 1;
-		_createNeighbors(tile.position.x, tile.position.y);
 	}
 
 	/// @dev Restrict calls to only from an authority
 	modifier onlyAuthority() {
 		require(_authorities[msg.sender], 'authority restricted');
 		_;
+	}
+
+	/// @dev Restrict calls to only uninitialized state.
+	modifier onlyUninitialized() {
+		require(!isTileAt(0, 0), 'contract must be uninitialized');
+		_;
+	}
+
+	/// @dev Restrict calls to only initialized state.
+	modifier onlyInitialized() {
+		require(isTileAt(0, 0), 'contract must be initialized');
+		_;
+	}
+
+	function init(address genesisOwner) public onlyUninitialized {
+		Tile storage tile = _createTileAt(0, 0);
+		tile.owner = genesisOwner;
+		tile.timesBought = 1;
+		_createNeighbors(tile.position.x, tile.position.y);
 	}
 
 	function _createTileAt(int32 x, int32 y) private returns (Tile storage) {
@@ -121,7 +135,7 @@ contract UpcityGame is UpcityBase {
 		price = _getTilePrice(tile);
 	}
 
-	function buyTile(int32 x, int32 y) public payable returns (bool) {
+	function buyTile(int32 x, int32 y) public payable onlyInitialized returns (bool) {
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner != msg.sender, 'you already own this tile');
@@ -143,7 +157,7 @@ contract UpcityGame is UpcityBase {
 	}
 
 	function buildBlocks(int32 x, int32 y, bytes16 blocks)
-			public returns (bool) {
+			public onlyInitialized returns (bool) {
 
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
@@ -178,7 +192,8 @@ contract UpcityGame is UpcityBase {
 	}
 
 	function getBlockCost(uint8 _block, uint8 height)
-			public view returns (uint256[NUM_RESOURCES] memory cost) {
+			public view onlyInitialized
+			returns (uint256[NUM_RESOURCES] memory cost) {
 
 		assert(_block <= MAX_BLOCK_VALUE && height < MAX_HEIGHT);
 		uint256 c = ${MAX(_blockStats[_block].count, 1)};
@@ -189,7 +204,7 @@ contract UpcityGame is UpcityBase {
 		// #done
 	}
 
-	function collect(int32 x, int32 y) public returns (bool) {
+	function collect(int32 x, int32 y) public onlyInitialized returns (bool) {
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner == msg.sender, 'you do not own this tile');
 		require(${BLOCKTIME} > tile.lastTouchTime, 'block time is in the past');
@@ -221,7 +236,7 @@ contract UpcityGame is UpcityBase {
 		return true;
 	}
 
-	function claimFunds() public onlyAuthority {
+	function claimFunds() public onlyInitialized onlyAuthority {
 		assert(address(this).balance >= fundsCollected);
 		if (fundsCollected > 0) {
 			uint256 funds = fundsCollected;
