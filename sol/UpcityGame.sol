@@ -36,7 +36,11 @@ contract UpcityGame is UpcityBase {
 	/// @dev Ether which has "fallen off the edge".
 	/// Increased every time ether propogates to a tile
 	/// that has no owner. Can be claimed with claimFunds().
-	uint256 fundsCollected = 0;
+	uint256 public fundsCollected = 0;
+
+	event Bought(bytes16 indexed id, address from, address to, uint256 price);
+	event Collected(bytes16 indexed id);
+	event Built(bytes16 indexed id, bytes16 blocks);
 
 	constructor(
 			address[] tokens,
@@ -104,21 +108,6 @@ contract UpcityGame is UpcityBase {
 		return bytes16(keccak256(abi.encodePacked(x, y, address(this))));
 	}
 
-	function _getTileAt(int32 x, int32 y)
-			private view returns (Tile storage) {
-
-		return _tiles[toTileId(x, y)];
-	}
-
-	function _getExistingTileAt(int32 x, int32 y)
-			private view returns (Tile storage) {
-
-		bytes16 id = toTileId(x, y);
-		Tile storage tile = _tiles[id];
-		require(tile.id == id, 'tile does not exist');
-		return tile;
-	}
-
 	function isTileAt(int32 x, int32 y) public view returns (bool) {
 		Tile storage tile = _getTileAt(x, y);
 		return tile.id != 0x0;
@@ -155,14 +144,15 @@ contract UpcityGame is UpcityBase {
 		tile.owner = msg.sender;
 		// Base price increases every time a tile is bought.
 		tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
-		// Refund any overpayment.
-		if (msg.value > price)
-			_payTo(msg.sender, msg.value - price);
-		uint256 taxes = TAX_RATE * price;
+		uint256 taxes = (TAX_RATE * price) / PPM_ONE;
 		assert(taxes <= price);
 		// Pay previous owner.
 		_payTo(oldOwner, price - taxes);
 		_sharePurchase(tile, taxes);
+		// Refund any overpayment.
+		if (msg.value > price)
+			_payTo(msg.sender, msg.value - price);
+		emit Bought(tile.id, oldOwner, tile.owner, price);
 		return true;
 	}
 
@@ -189,7 +179,23 @@ contract UpcityGame is UpcityBase {
 		// #for I in range(NUM_RESOURCES)
 		_burn(tile.owner, $${I}, cost[$${I}]);
 		// #done
+		emit Built(tile.id, tile.blocks);
 		return true;
+	}
+
+	function _getTileAt(int32 x, int32 y)
+			private view returns (Tile storage) {
+
+		return _tiles[toTileId(x, y)];
+	}
+
+	function _getExistingTileAt(int32 x, int32 y)
+			private view returns (Tile storage) {
+
+		bytes16 id = toTileId(x, y);
+		Tile storage tile = _tiles[id];
+		require(tile.id == id, 'tile does not exist');
+		return tile;
 	}
 
 	function _incrementBlockStats(uint8 _block, uint8 height) private {
@@ -218,7 +224,6 @@ contract UpcityGame is UpcityBase {
 			public onlyInitialized returns (bool) {
 
 		Tile storage tile = _getExistingTileAt(x, y);
-		require(tile.owner == msg.sender, 'you do not own this tile');
 		require(${BLOCKTIME} > tile.lastTouchTime, 'block time is in the past');
 		uint256 dt = ${BLOCKTIME} - tile.lastTouchTime;
 		tile.lastTouchTime = ${BLOCKTIME};
@@ -245,6 +250,7 @@ contract UpcityGame is UpcityBase {
 		_mintTo(tile.owner, $${I},
 			collected[$${I}] - (collected[$${I}] * TAX_RATE) / PPM_ONE);
 		// #done
+		emit Collected(tile.id);
 		return true;
 	}
 

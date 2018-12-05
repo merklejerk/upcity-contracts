@@ -1,6 +1,6 @@
 pragma solidity ^0.4.24;
 
-import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-solidity/release-v2.0.0/contracts/token/ERC20/ERC20.sol';
+import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-solidity/v2.0.0/contracts/token/ERC20/ERC20.sol';
 
 /// @title ERC20 token contract for upcity resources (onite, topite, rubite).
 contract UpcityResourceToken is ERC20 {

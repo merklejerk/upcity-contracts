@@ -25,8 +25,16 @@ contract UpcityMarket is BancorFormula {
 	/// @dev Creator of this contract, who can call init().
 	address private _creator;
 
-	event Bought(address resource, address to, uint256 value, uint256 bought);
-	event Sold(address resource, address to, uint256 sold, uint256 value);
+	event Bought(
+		address indexed resource,
+		address indexed to,
+		uint256 value,
+		uint256 bought);
+	event Sold(
+		address indexed resource,
+		address indexed to,
+		uint256 sold,
+		uint256 value);
 
 	/// @dev Deploy the market.
 	/// init() needs to be called before market functions will work.

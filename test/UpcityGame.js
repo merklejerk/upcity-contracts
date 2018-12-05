@@ -23,13 +23,17 @@ function unpackDescription(r) {
 }
 
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
+
+	async function describeTileAt(x, y) {
+		return unpackDescription(await this.game.describeTileAt(x, y));
+	}
+
 	before(async function() {
 		_.assign(this, await testbed({
 			contracts: ['UpcityResourceToken', 'UpcityMarket', 'UpcityGame']}));
 		this.users = _.slice(this.accounts, 1);
-		this.authority = _.sample(this.users);
-		this.users = _.without(this.users, this.authority);
-		this.genesisUser = this.users[0];
+		[this.authority, this.genesisUser] = _.sampleSize(this.users, 2);
+		this.users = _.without(this.users, this.authority, this.genesisUser);
 		this.market = this.contracts['UpcityMarket'];
 		this.game = this.contracts['UpcityGame'];
 	});
@@ -54,15 +58,48 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			{gasBonus: 0.25}
 		);
 		await this.game.init(this.genesisUser, {from: this.authority});
+		describeTileAt = _.bind(describeTileAt, this);
 	});
 
+
 	it('genesis owner owns genesis tile', async function() {
-		const d = unpackDescription(await this.game.describeTileAt(0, 0));
-		assert.equal(d.owner, this.genesisUser);
+		const tile = await describeTileAt(0, 0);
+		assert.equal(tile.owner, this.genesisUser);
 	});
 
 	it('genesis tile has a price', async function() {
-		const d = unpackDescription(await this.game.describeTileAt(0, 0));
-		assert(bn.gt(d.price, 0));
+		const tile = await describeTileAt(0, 0);
+		assert(bn.gt(tile.price, 0));
 	});
+
+	it('can buy owned tile', async function() {
+		const [player] = _.sampleSize(this.users, 1);
+		let tile = await describeTileAt(0, 0);
+		const tx = await this.game.buyTile(0, 0,
+			{from: player, value: tile.price});
+		tile = await describeTileAt(0, 0);
+		assert.equal(tile.owner, player);
+	});
+
+	it('buying a tile with > price refunds difference', async function() {
+		const [player] = _.sampleSize(this.users, 1);
+		let tile = await describeTileAt(0, 0);
+		const prevBalance = await this.eth.getBalance(player);
+		const payment = bn.add(tile.price, ONE_TOKEN);
+		const tx = await this.game.buyTile(0, 0,
+			{from: player, value: payment, gasPrice: 1});
+		const predicted = bn.sub(bn.sub(prevBalance, tx.gasUsed), tile.price);
+		const balance = await this.eth.getBalance(player);
+		assert.equal(balance, predicted);
+	});
+
+	it('buying edge tile increases funds collected', async function() {
+		const [player] = _.sampleSize(this.users, 1);
+		let tile = await describeTileAt(0, 0);
+		const tx = await this.game.buyTile(0, 0,
+			{from: player, value: tile.price});
+		const funds = await this.game.fundsCollected();
+		assert(bn.gt(funds, 0));
+	});
+
 });
