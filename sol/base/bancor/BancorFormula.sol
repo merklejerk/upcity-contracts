@@ -1,4 +1,4 @@
-pragma solidity ^0.4.22;
+pragma solidity ^0.5;
 import './Utils.sol';
 
 /// @dev Slightly stripped down and modernized version of BancorFormula from

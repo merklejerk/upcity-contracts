@@ -1,13 +1,17 @@
-pragma solidity ^0.4.24;
+pragma solidity ^0.5;
 
-import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-solidity/v2.0.0/contracts/token/ERC20/ERC20.sol';
+// solhint-disable-next-line
+import './base/openzeppelin/token/ERC20/ERC20.sol';
 
 /// @title ERC20 token contract for upcity resources (onite, topite, rubite).
 contract UpcityResourceToken is ERC20 {
 	using SafeMath for uint256;
 
+	address internal constant ZERO_ADDRESS = address(0x0);
+
 	string public name;
 	string public symbol;
+	// solhint-disable-next-line
 	uint8 public constant decimals = 18;
 	mapping(address=>bool) public isAuthority;
 
@@ -18,7 +22,10 @@ contract UpcityResourceToken is ERC20 {
 	/// @param _authorities Who can mint and burn tokens arbitrarily
 	/// locked up forever.
 	constructor(
-			string _name, string _symbol, uint256 reserve, address[] _authorities)
+			string memory _name,
+			string memory _symbol,
+			uint256 reserve,
+			address[] memory _authorities)
 			public {
 
 		require(reserve >= 0, 'reserve must be nonzero');
@@ -43,7 +50,7 @@ contract UpcityResourceToken is ERC20 {
 	/// @dev Burn tokens held by an address.
 	/// Only the authority may call this.
 	function burn(address from, uint256 amt) public onlyAuthority {
-		require(from != 0x0 && from != address(this),
+		require(from != ZERO_ADDRESS && from != address(this),
 			'cannot burn from token contract');
 		_burn(from, amt);
 	}
@@ -52,7 +59,7 @@ contract UpcityResourceToken is ERC20 {
 	/// 0x0 or this contract address.
 	function transfer(address to, uint256 amt) public returns (bool) {
 		// Transfers to 0x0 or this contract are burns.
-		if (to == 0x0 || to == address(this)) {
+		if (to == ZERO_ADDRESS || to == address(this)) {
 			_burn(msg.sender, amt);
 			return true;
 		}
@@ -65,7 +72,7 @@ contract UpcityResourceToken is ERC20 {
 			public returns (bool) {
 
 		// Transfers to 0x0 or this contract are burns.
-		if (to == 0x0 || to == address(this)) {
+		if (to == ZERO_ADDRESS || to == address(this)) {
 			_burnFrom(from, amt);
 			return true;
 		}

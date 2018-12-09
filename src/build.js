@@ -13,7 +13,7 @@ const ARGS = minimist(process.argv.slice(2),
 const FORCE = !!ARGS.force;
 
 async function generateSourceUnits(config) {
-	const files = config.units;
+	const files = await util.glob(config.units, project.SOL_ROOT);
 	const promises = [];
 	for (let f of files) {
 		promises.push((async () => {
@@ -40,14 +40,33 @@ async function getSolidityFiles(root) {
 	return util.getTreeFiles(root, {filter: f => /\.sol$/.test(f)});
 }
 
+async function getCompilerSources(files) {
+	const contents = await Promise.all(
+		_.map(files, f => fs.readFile(f, 'utf-8')));
+	return _.zipObject(files, _.map(contents, s => ({content: s})));
+}
+
 class CompilationError extends Error {};
 
 async function compileAll(config) {
 	const files = await getSolidityFiles(project.BUILD_SOL_ROOT);
 	console.log(`Compiling: ${files.join(', ')}...`);
-	const inputs = _.zipObject(files,
-		await Promise.all(_.map(files, f => fs.readFile(f, 'utf-8'))));
-	const output = solc.compile({sources: inputs}, config.optimizer || 0);
+	const input = {
+		language: 'Solidity',
+		sources: await getCompilerSources(files),
+		settings: {
+			optimizer: {
+				enabled: !!config.optimizer,
+				runs: _.toNumber(config.optimizer) || 0
+			},
+			outputSelection: {
+				'*': {
+					'*': ['abi', 'evm.bytecode.object']
+				}
+			}
+		}
+	};
+	const output = JSON.parse(solc.compile(JSON.stringify(input)));
 	if (output.errors && output.errors.length) {
 		throw new CompilationError(
 			_.map(output.errors, e => e.formattedMessage || e).join('\n'));
@@ -55,21 +74,24 @@ async function compileAll(config) {
 	const targets = _.map(files, f => path.basename(f, '.sol'));
 	const contracts = {};
 	for (let name in output.contracts) {
-		const m = (/\:([a-z_][a-z0-9]+)$/i).exec(name);
-		if (m && _.includes(targets, m[1]))
-			contracts[m[1]] = output.contracts[name];
+		const _contracts = output.contracts[name];
+		const targetName = path.basename(name, '.sol');
+		if (targetName in _contracts) {
+			const target = _contracts[targetName];
+			contracts[targetName] = {
+				abi: target.abi,
+				bytecode: target.evm.bytecode.object
+			};
+		}
 	}
-	return _.mapValues(contracts, c => {
-		c.interface = JSON.parse(c.interface);
-		return c;
-	});
+	return contracts;
 }
 
 async function writeArtifacts(contracts) {
 	return Promise.all(_.map(contracts,
 		(v,k) => util.writeFilePath(
 			path.resolve(project.BUILD_OUTPUT_ROOT, k + '.json'),
-			JSON.stringify(v))));
+			JSON.stringify(v, null, '\t'))));
 }
 
 async function loadConfig() {
@@ -99,6 +121,12 @@ async function loadCache() {
 	}
 }
 
+async function computeInHash(config) {
+	const filesHash = await util.getTreeHash(project.SOL_ROOT);
+	const configHash = util.hashString(JSON.stringify(config));
+	return util.hashString(filesHash + configHash);
+}
+
 async function writeCache(data) {
 	await fs.writeFile(project.CACHE_PATH, JSON.stringify(data));
 }
@@ -113,10 +141,11 @@ async function wipeGeneratedSource(config) {
 (async function() {
 	try {
 		const config = await loadConfig();
-		const cached = await loadCache();
-		const inHash = await util.hashFiles(config.units);
+		let cached = await loadCache();
+		const inHash = await computeInHash(config);
 		let units = [];
 		if (FORCE || !cached || cached.inHash != inHash) {
+			cached = null;
 			await wipeGeneratedSource(config);
 			units = await generateSourceUnits(config);
 		}

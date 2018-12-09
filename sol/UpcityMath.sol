@@ -1,4 +1,5 @@
-// #def PRECISION 1e6
+pragma solidity ^0.5;
+
 // #def TO_PPM(x) round(x * PRECISION)
 // #def AS_UINT64(x) `uint64(${uint64(x)})`
 // #def AS_UINT256(x) `uint256(${uint256(x)})`
@@ -6,7 +7,8 @@
 // #def MAX(a, b) (a >= b ? a : b)
 
 contract UpcityMath {
-	uint64 constant PPM_ONE = $${AS_UINT64(PPM_ONE)};
+	// solhint-disable-next-line
+	uint64 constant PPM_ONE = $$(AS_UINT64(PPM_ONE));
 
 	/// @dev x^y
 	/// @param x base expressed in ppm (e.g., 1e6 == 1.0)

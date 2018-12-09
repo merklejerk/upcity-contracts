@@ -1,15 +1,31 @@
 const _ = require('lodash');
 const fs = require('mz/fs');
 const fse = require('fs-extra');
+const process = require('process');
 const path = require('path');
 const promisify = require('util').promisify;
 const mkdirp = promisify(require('mkdirp'));
 const crypto = require('crypto');
+const _glob = promisify(require('glob').glob);
+
+async function glob(names, cwd) {
+	cwd = cwd || process.cwd();
+	if (!_.isArray(names))
+		names = [names];
+	return _.flatten(
+		await Promise.all(_.map(names, f => _glob(f, {cwd: cwd}))));
+}
 
 async function hashFiles(files) {
 	const hash = crypto.createHash('sha256');
 	for (let f of files)
 		hash.update(await fs.readFile(f), 'utf-8');
+	return hash.digest('hex');
+}
+
+function hashString(str) {
+	const hash = crypto.createHash('sha256');
+	hash.update(str);
 	return hash.digest('hex');
 }
 
@@ -85,8 +101,10 @@ module.exports = {
 	hashFiles: hashFiles,
 	getTreeHash: getTreeHash,
 	getTreeFiles: getTreeFiles,
+	hashString: hashString,
 	transplantFilePath: transplantFilePath,
 	writeFilePath: writeFilePath,
 	wipe: wipe,
-	wipeExcept: wipeExcept
+	wipeExcept: wipeExcept,
+	glob: glob
 };

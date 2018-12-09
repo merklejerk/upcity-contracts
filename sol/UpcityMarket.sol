@@ -1,6 +1,7 @@
-pragma solidity ^0.4.24;
+pragma solidity ^0.5;
 
-import 'https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-solidity/9b3710465583284b8c4c5d2245749246bb2e0094/contracts/math/SafeMath.sol';
+// solhint-disable-next-line
+import './base/openzeppelin/math/SafeMath.sol';
 import './base/bancor/BancorFormula.sol';
 import './IResourceToken.sol';
 
@@ -9,7 +10,7 @@ contract UpcityMarket is BancorFormula {
 
 	using SafeMath for uint256;
 
-	uint32 constant PPM_ONE = $${1e6};
+	uint32 constant PPM_ONE = $$(1e6);
 
 	struct Market {
 		IResourceToken token;
@@ -63,12 +64,21 @@ contract UpcityMarket is BancorFormula {
 		_;
 	}
 
+	/// @dev Fund the markets.
+	/// Attached ether will be distributed evenly across all token markets.
+	function() external payable onlyInitialized {
+		for (uint8 i = 0; i < tokens.length; i++) {
+			Market storage market = _markets[tokens[i]];
+			market.funds = market.funds.add(msg.value/tokens.length);
+		}
+	}
+
 	/// @dev Initialize and fund the markets.
 	/// This is the only privileged function and can only be called once by
 	/// the contract creator.
 	/// Attached ether will be distributed evenly across all token markets.
 	/// @param _tokens The address of each token.
-	function init(address[] _tokens)
+	function init(address[] memory _tokens)
 			public payable onlyCreator onlyUninitialized {
 
 		require(msg.value >= _tokens.length);
@@ -82,15 +92,6 @@ contract UpcityMarket is BancorFormula {
 			require(market.token.isAuthority(address(this)));
 		}
 		_bancorInit();
-	}
-
-	/// @dev Fund the markets.
-	/// Attached ether will be distributed evenly across all token markets.
-	function() payable onlyInitialized public {
-		for (uint8 i = 0; i < tokens.length; i++) {
-			Market storage market = _markets[tokens[i]];
-			market.funds = market.funds.add(msg.value/tokens.length);
-		}
 	}
 
 	/// @dev Get the current price of a resource.
@@ -127,7 +128,7 @@ contract UpcityMarket is BancorFormula {
 	/// @param amount Amount of tokens to sell.
 	/// @param to Recipient of ether.
 	/// @return The number of ether received.
-	function sell(address resource, uint256 amount, address to)
+	function sell(address resource, uint256 amount, address payable to)
 			public onlyInitialized returns (uint256) {
 
 		Market storage market = _markets[resource];
@@ -146,8 +147,10 @@ contract UpcityMarket is BancorFormula {
 	// #if TEST
 	function __uninitialize() public {
 		tokens.length = 0;
-		if (address(this).balance > 0)
-			address(0x0).transfer(address(this).balance);
+		if (address(this).balance > 0) {
+			address payable nobody = address(0x0);
+			nobody.transfer(address(this).balance);
+		}
 	}
 	// #endif
 }
