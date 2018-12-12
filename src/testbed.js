@@ -12,7 +12,6 @@ const process = require('process');
 const project = require('./project');
 
 process.on('unhandledRejection', (err) => {});
-
 const ONE_TOKEN = bn.parse('1e18');
 const MAX_UINT = bn.sub(bn.pow(2, 256), 1);
 const ZERO_ADDRESS = '0x' + _.repeat('0', 40);
@@ -84,6 +83,7 @@ module.exports = async function(opts={}) {
 	const provider = ganache.provider(providerOpts);
 	const eth = new FlexEther({provider: provider, gasBonus: 0.75});
 	provider.setMaxListeners(4096);
+	provider.engine.setMaxListeners(4096);
 	const artifacts = await Promise.all(
 		_.map(opts.contracts || [], n => project.getArtifact(n)));
 	const contractOpts = {

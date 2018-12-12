@@ -3,15 +3,34 @@ const _ = require('lodash');
 const assert = require('assert');
 const bn = require('bn-str-256');
 const testbed = require('../src/testbed');
+const constants = require('../constants.js');
 
 const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
+const {ONITE_BLOCK, TOPITE_BLOCK, RUBITE_BLOCK, MAX_HEIGHT, NUM_RESOURCES} = constants;
 const RESERVE = ONE_TOKEN;
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
-const CONNECTOR_WEIGHT = Math.round(1e6 * 0.33);
-const NUM_RESOURCES = 3;
+const CONNECTOR_WEIGHT = Math.round(1e6 * constants.CONNECTOR_WEIGHT);
 const CONTRACTS = [
 	'UpcityResourceToken', 'UpcityMarket', 'UpcityGame', 'GasGuzzler'
 ];
+const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
+
+function decodeBlocks(encoded) {
+	const hex = bn.toHex(encoded, -MAX_HEIGHT).substr(2);
+	return _.filter(
+		_.times(MAX_HEIGHT, i => parseInt(hex.substr(i*2, 2), 16)),
+		b => b != 255);
+}
+
+function encodeBlocks(blocks) {
+	assert(blocks.length <= MAX_HEIGHT);
+	const slots = _.times(MAX_HEIGHT, 'ff');
+	for (let i = 0; i <  blocks.length; i++) {
+		const b = blocks[i];
+		slots[i] = bn.toHex(b, 1);
+	}
+	return '0x' + slots.join('');
+}
 
 function unpackDescription(r) {
 	return {
@@ -21,7 +40,7 @@ function unpackDescription(r) {
 		timesBought: bn.toNumber(r[3]),
 		lastTouchTime: bn.toNumber(r[4]),
 		owner: r[5],
-		blocks: r[6],
+		blocks: decodeBlocks(r[6]),
 		price: bn.parse(r[7])
 	};
 }
@@ -30,6 +49,12 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	async function describeTileAt(x, y) {
 		return unpackDescription(await this.game.describeTileAt(x, y));
+	}
+
+	async function grantTokens(whom, tokens) {
+		assert(_.isArray(tokens) && tokens.length == NUM_RESOURCES);
+		return Promise.all(
+			_.map(tokens, (amt, res) => this.tokens[res].mint(whom, amt)));
 	}
 
 	before(async function() {
@@ -141,12 +166,30 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert(bn.gt(await this.eth.getBalance(prevOwner), ownerBalance));
 	});
 
-	it('buying a tile increases tile\'s price', async function() {
+	it('buying a tile increases its price', async function() {
 		const [buyer] = _.sampleSize(this.users, 1);
-		const {price}= await describeTileAt(0, 0);
+		const {price} = await describeTileAt(0, 0);
 		await this.game.buyTile(0, 0, {from: buyer, value: price});
 		const {price: newPrice} = await describeTileAt(0, 0);
 		assert(bn.gt(newPrice, price));
+	});
+
+	it('buying a tile increases its neighbors\' price', async function() {
+		const [buyer] = _.sampleSize(this.users, 1);
+		const {price} = await describeTileAt(0, 0);
+		const oldNeighborPrices = _.map(
+			await Promise.all(_.map(NEIGHBOR_OFFSETS,
+				([ox, oy]) => describeTileAt(ox, oy))),
+			t => t.price);
+		await this.game.buyTile(0, 0, {from: buyer,value: price});
+		const newNeighborPrices = _.map(
+			await Promise.all(_.map(NEIGHBOR_OFFSETS,
+				([ox, oy]) => describeTileAt(ox, oy))),
+			t => t.price);
+		for (let [oldPrice, newPrice] of
+				_.zip(oldNeighborPrices, newNeighborPrices)) {
+			assert(bn.gt(newPrice, oldPrice));
+		}
 	});
 
 	it('buying a tile with > price refunds difference', async function() {
@@ -159,6 +202,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const predicted = bn.sub(bn.sub(prevBalance, tx.gasUsed), tile.price);
 		const balance = await this.eth.getBalance(player);
 		assert.equal(balance, predicted);
+	});
+
+	it('can get the build cost for each block', async function() {
+		const [builder] = _.sampleSize(this.users, 1);
+		const blocks = encodeBlocks([ONITE_BLOCK]);
+		await assert.rejects(this.game.buildBlocks(0, 0, blocks), /NOT_ALLOWED$/);
+	});
+
+	it('cannot build on a tile owned by someone else', async function() {
+		const [builder] = _.sampleSize(this.users, 1);
+		const blocks = encodeBlocks([ONITE_BLOCK]);
+		await assert.rejects(this.game.buildBlocks(0, 0, blocks), /NOT_ALLOWED$/);
 	});
 
 	it('buying edge tile increases funds collected', async function() {
