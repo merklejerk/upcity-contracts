@@ -323,6 +323,24 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			ERRORS.NOT_ALLOWED);
 	});
 
+	it('building blocks burn resources', async function() {
+		const player = this.genesisPlayer;
+		const [x, y] = [0, 0];
+		const blocks = _.times(_.random(1, MAX_HEIGHT), i => _.sample(BLOCKS));
+		const cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
+		const initialSupplies = await Promise.all(
+			_.map(this.tokens, token => token.totalSupply()));
+		await grantTokens(player, cost);
+		const tx = await this.game.buildBlocks(x, y,  encodeBlocks(blocks),
+			{from: player});
+		const bals = await Promise.all(
+			_.map(BLOCKS, b => this.tokens[b].balanceOf(player)));
+		assert.deepEqual(bals, ['0', '0', '0']);
+		const supplies = await Promise.all(
+			_.map(this.tokens, token => token.totalSupply()));
+		assert.deepEqual(supplies, initialSupplies);
+	});
+
 	it('buying edge tile increases funds collected', async function() {
 		const [player] = _.sampleSize(this.users, 1);
 		let tile = await describeTileAt(0, 0);
