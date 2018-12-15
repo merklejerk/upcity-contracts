@@ -3,6 +3,8 @@ const _ = require('lodash');
 const assert = require('assert');
 const bn = require('bn-str-256');
 const testbed = require('../src/testbed');
+const constants = require('../constants.js');
+const ERRORS = require('./lib/errors.js');
 
 const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
 const RESERVE = ONE_TOKEN;
@@ -18,8 +20,9 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	});
 
 	beforeEach(async function() {
-		return this.contract.new(
-			TOKEN_NAME, TOKEN_SYMBOL, RESERVE, [this.authority]);
+		await this.contract.new(
+			TOKEN_NAME, TOKEN_SYMBOL, RESERVE);
+		await this.contract.init([this.authority]);
 	});
 
 	it('Can get the token name', async function() {
@@ -41,35 +44,66 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const [wallet] = _.sampleSize(this.users, 1);
 		const amount = 100;
 		await this.contract.mint(wallet, amount, {from: this.authority});
-		assert.equal(bn.parse(amount), await this.contract.balanceOf(wallet));
+		assert.equal(await this.contract.balanceOf(wallet), bn.parse(amount));
+	});
+
+	it('Authority can burn', async function() {
+		const [wallet] = _.sampleSize(this.users, 1);
+		const amount = 100;
+		await this.contract.mint(wallet, amount, {from: this.authority});
+		await this.contract.burn(wallet, amount, {from: this.authority});
+		assert.equal(await this.contract.balanceOf(wallet), '0');
 	});
 
 	it('Minting increases total supply', async function() {
 		const [wallet] = _.sampleSize(this.users, 1);
 		const amount = 100;
+		const initialSupply = await this.contract.totalSupply();
 		await this.contract.mint(wallet, amount, {from: this.authority});
-		assert.equal(bn.add(amount, RESERVE), await this.contract.totalSupply());
+		assert.equal(await this.contract.totalSupply(),
+			bn.add(amount, initialSupply));
+	});
+
+	it('Burning reduces total supply', async function() {
+		const [wallet] = _.sampleSize(this.users, 1);
+		const amount = 100;
+		const initialSupply = await this.contract.totalSupply();
+		await this.contract.mint(wallet, amount, {from: this.authority});
+		await this.contract.burn(wallet, amount, {from: this.authority});
+		assert.equal(await this.contract.totalSupply(), initialSupply);
 	});
 
 	it('Non-authority cannot mint', async function() {
 		const [wallet, actor] = _.sampleSize(this.users, 2);
 		const amount = 100;
 		await assert.rejects(
-			this.contract.mint(wallet, amount, {from: actor}));
+			this.contract.mint(wallet, amount, {from: actor}),
+			ERRORS.RESTRICTED);
+	});
+
+	it('Non-authority cannot burn', async function() {
+		const [wallet, actor] = _.sampleSize(this.users, 2);
+		const amount = 100;
+		await this.contract.mint(wallet, amount, {from: this.authority});
+		await assert.rejects(
+			this.contract.mint(wallet, amount, {from: actor}),
+			ERRORS.RESTRICTED);
 	});
 
 	it('Cannot transfer with zero balance', async function() {
 		const [sender, receiver] = _.sampleSize(this.users, 2);
 		const amount = 1;
 		return await assert.rejects(
-			this.contract.transfer(receiver, amount, {from: sender}));
+			this.contract.transfer(receiver, amount, {from: sender}),
+			ERRORS.INSUFFICIENT);
 	});
 
 	it('Cannot transferFrom with zero balance', async function() {
 		const [sender, wallet, receiver] = _.sampleSize(this.users, 3);
 		const amount = 1;
 		return await assert.rejects(
-			this.contract.transferFrom(wallet, receiver, amount, {from: sender}));
+			this.contract.transferFrom(wallet, receiver, amount, {from: sender}),
+			ERRORS.INSUFFICIENT);
 	});
 
 	it('Cannot transfer more than balance', async function() {
@@ -77,7 +111,8 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const amount = 100;
 		await this.contract.mint(sender, amount - 1, {from: this.authority});
 		return await assert.rejects(
-			this.contract.transfer(receiver, amount, {from: sender}));
+			this.contract.transfer(receiver, amount, {from: sender}),
+			ERRORS.INSUFFICIENT);
 	});
 
 	it('Cannot transferFrom more than balance', async function() {
@@ -86,7 +121,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.contract.mint(wallet, amount - 1, {from: this.authority});
 		await this.contract.approve(sender, MAX_UINT, {from: wallet})
 		return await assert.rejects(
-			this.contract.transferFrom(wallet, receiver, amount, {from: sender}));
+			this.contract.transferFrom(wallet, receiver, amount, {from: sender}),
+			ERRORS.INSUFFICIENT);
+	});
+
+	it('Cannot transferFrom more than allowance', async function() {
+		const [sender, wallet, receiver] = _.sampleSize(this.users, 3);
+		const amount = 100;
+		await this.contract.mint(wallet, amount, {from: this.authority});
+		await this.contract.approve(sender, amount - 1, {from: wallet})
+		return await assert.rejects(
+			this.contract.transferFrom(wallet, receiver, amount, {from: sender}),
+			ERRORS.INSUFFICIENT);
 	});
 
 	it('Can transfer entire balance', async function() {
@@ -134,42 +180,38 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	it('Transfer to 0x0 burns tokens', async function() {
 		const [sender] = _.sampleSize(this.users, 1);
 		const amount = 100;
+		const initialSupply = await this.contract.totalSupply();
 		await this.contract.mint(sender, amount, {from: this.authority});
 		await this.contract.transfer(ZERO_ADDRESS, amount, {from: sender});
-		assert.equal(
-			await this.contract.totalSupply(),
-			bn.parse(RESERVE));
+		assert.equal(await this.contract.totalSupply(), initialSupply);
 	});
 
 	it('Transfer to contract burns tokens', async function() {
 		const [sender] = _.sampleSize(this.users, 1);
 		const amount = 100;
+		const initialSupply = await this.contract.totalSupply();
 		await this.contract.mint(sender, amount, {from: this.authority});
 		await this.contract.transfer(this.contract.address, amount, {from: sender});
-		assert.equal(
-			await this.contract.totalSupply(),
-			bn.parse(RESERVE));
+		assert.equal(await this.contract.totalSupply(), initialSupply);
 	});
 
 	it('TransferFrom to 0x0 burns tokens', async function() {
 		const [sender, wallet] = _.sampleSize(this.users, 2);
 		const amount = 100;
+		const initialSupply = await this.contract.totalSupply();
 		await this.contract.mint(wallet, amount, {from: this.authority});
 		await this.contract.approve(sender, MAX_UINT, {from: wallet});
 		await this.contract.transferFrom(wallet, ZERO_ADDRESS, amount, {from: sender});
-		assert.equal(
-			await this.contract.totalSupply(),
-			bn.parse(RESERVE));
+		assert.equal(await this.contract.totalSupply(), initialSupply);
 	});
 
 	it('TransferFrom to contract burns tokens', async function() {
 		const [sender, wallet] = _.sampleSize(this.users, 2);
 		const amount = 100;
+		const initialSupply = await this.contract.totalSupply();
 		await this.contract.mint(wallet, amount, {from: this.authority});
 		await this.contract.approve(sender, MAX_UINT, {from: wallet});
 		await this.contract.transferFrom(wallet, this.contract.address, amount, {from: sender});
-		assert.equal(
-			await this.contract.totalSupply(),
-			bn.parse(RESERVE));
+		assert.equal(await this.contract.totalSupply(), initialSupply);
 	});
 });

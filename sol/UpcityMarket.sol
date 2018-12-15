@@ -4,13 +4,15 @@ pragma solidity ^0.5;
 import './base/openzeppelin/math/SafeMath.sol';
 import './base/bancor/BancorFormula.sol';
 import './IResourceToken.sol';
+import './Uninitialized.sol';
+import './Restricted.sol';
 
 /// @title Bancor meta-market for UpCity's resources.
-contract UpcityMarket is BancorFormula {
+contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 
 	using SafeMath for uint256;
 
-	uint32 constant PPM_ONE = $$(1e6);
+	uint32 private constant PPM_ONE = $$(1e6);
 
 	struct Market {
 		IResourceToken token;
@@ -23,8 +25,6 @@ contract UpcityMarket is BancorFormula {
 	uint32 public connectorWeight;
 	/// @dev Indiividual markets for each resource.
 	mapping(address=>Market) private _markets;
-	/// @dev Creator of this contract, who can call init().
-	address private _creator;
 
 	event Bought(
 		address indexed resource,
@@ -43,25 +43,6 @@ contract UpcityMarket is BancorFormula {
 	constructor(uint32 cw) public {
 		require(cw <= PPM_ONE);
 		connectorWeight = cw;
-		_creator = msg.sender;
-	}
-
-	/// @dev Only callable by contract creator.
-	modifier onlyCreator() {
-		require(msg.sender == _creator);
-		_;
-	}
-
-	/// @dev Only callable when the contract has been initialized.
-	modifier onlyInitialized() {
-		require(tokens.length > 0);
-		_;
-	}
-
-	/// @dev Only callable when the contract is uninitialized.
-	modifier onlyUninitialized() {
-		require(tokens.length == 0);
-		_;
 	}
 
 	/// @dev Fund the markets.
@@ -78,10 +59,11 @@ contract UpcityMarket is BancorFormula {
 	/// the contract creator.
 	/// Attached ether will be distributed evenly across all token markets.
 	/// @param _tokens The address of each token.
-	function init(address[] memory _tokens)
-			public payable onlyCreator onlyUninitialized {
+	function init(address[] calldata _tokens)
+			external payable onlyCreator onlyUninitialized {
 
-		require(msg.value >= _tokens.length);
+		require(_tokens.length > 0, ERROR_INVALID);
+		require(msg.value >= _tokens.length, ERROR_INVALID);
 		for (uint256 i = 0; i < _tokens.length; i++) {
 			address addr = _tokens[i];
 			tokens.push(addr);
@@ -92,6 +74,7 @@ contract UpcityMarket is BancorFormula {
 			require(market.token.isAuthority(address(this)));
 		}
 		_bancorInit();
+		isInitialized = true;
 	}
 
 	/// @dev Get the current price of a resource.
@@ -99,7 +82,7 @@ contract UpcityMarket is BancorFormula {
 	/// @return The price, in wei.
 	function getPrice(address resource) public view returns (uint256) {
 		Market storage market = _markets[resource];
-		require(address(market.token) == resource, 'invalid resource');
+		require(address(market.token) == resource, ERROR_INVALID);
 		return (((1 ether) * market.funds) /
 			(market.token.totalSupply() * connectorWeight)) / PPM_ONE;
 	}
@@ -112,8 +95,8 @@ contract UpcityMarket is BancorFormula {
 			public payable onlyInitialized returns (uint256) {
 
 		Market storage market = _markets[resource];
-		require(address(market.token) == resource, 'invalid resource');
-		require(msg.value > 0, 'tx value must be nonzero');
+		require(address(market.token) == resource, ERROR_INVALID);
+		require(msg.value > 0, ERROR_INVALID);
 		uint256 supply = market.token.totalSupply();
 		uint256 bought = calculatePurchaseReturn(
 			supply, market.funds, connectorWeight, msg.value);
@@ -132,8 +115,8 @@ contract UpcityMarket is BancorFormula {
 			public onlyInitialized returns (uint256) {
 
 		Market storage market = _markets[resource];
-		require(address(market.token) == resource, 'invalid resource');
-		require(amount > 0, 'sell amount must be nonzero');
+		require(address(market.token) == resource, ERROR_INVALID);
+		require(amount > 0, ERROR_INVALID);
 		uint256 supply = market.token.totalSupply();
 		market.token.burn(msg.sender, amount);
 		uint256 funds = calculateSaleReturn(

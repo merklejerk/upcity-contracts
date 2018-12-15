@@ -3,12 +3,14 @@ const _ = require('lodash');
 const assert = require('assert');
 const bn = require('bn-str-256');
 const testbed = require('../src/testbed');
+const constants = require('../constants.js');
+const ERRORS = require('./lib/errors.js');
 
 const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
 const RESERVE = ONE_TOKEN;
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
-const CONNECTOR_WEIGHT = Math.round(1e6 * 0.33);
-const NUM_TOKENS = 3;
+const CONNECTOR_WEIGHT = Math.round(1e6 * constants.CONNECTOR_WEIGHT);
+const NUM_TOKENS = constants.NUM_RESOURCES;
 
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	before(async function() {
@@ -24,8 +26,8 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		for (let i = 0; i < NUM_TOKENS; i++) {
 			const token = this.contracts['UpcityResourceToken'].clone();
 			await token.new(
-				`Token-${i}`, `TTK${i}`, RESERVE,
-				[this.market.address, this.accounts[0]]);
+				`Token-${i}`, `TTK${i}`, RESERVE);
+			await token.init([this.market.address, this.accounts[0]]);
 			this.tokens.push(token);
 		}
 		await this.market.init(
@@ -35,7 +37,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	it('Cannot get the price of an unknown token', async function() {
 		const token = testbed.randomAddress();
-		assert.rejects(this.market.getPrice(token));
+		assert.rejects(this.market.getPrice(token), ERRORS.INVALID);
 	});
 
 	it('Can get the price of a token', async function() {
@@ -48,7 +50,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = testbed.randomAddress();
 		const payment = bn.mul(ONE_TOKEN, 0.5);
 		assert.rejects(this.market.buy(token, buyer,
-			{from: buyer, value: payment}));
+			{from: buyer, value: payment}), ERRORS.INVALID);
 	});
 
 	it('Cannot buy if uninitialized', async function() {
@@ -57,7 +59,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const payment = bn.mul(ONE_TOKEN, 0.5);
 		await this.market.__uninitialize();
 		assert.rejects(this.market.buy(token.address, buyer,
-			{from: buyer, value: payment}));
+			{from: buyer, value: payment}), ERRORS.UNINITIALIZED);
 	});
 
 	it('Cannot sell if uninitialized', async function() {
@@ -68,7 +70,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
-			{from: seller}));
+			{from: seller}), ERRORS.UNINITIALIZED);
 	});
 
 	it('Cannot buy zero', async function() {
@@ -76,7 +78,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const payment = 0;
 		assert.rejects(this.market.buy(token.address, buyer,
-			{from: buyer, value: payment}));
+			{from: buyer, value: payment}), ERRORS.INVALID);
 	});
 
 	it('Cannot sell zero', async function() {
@@ -88,7 +90,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
-			{from: seller}));
+			{from: seller}), ERRORS.INVALID);
 	});
 
 	it('Cannot sell with insufficient funds', async function() {

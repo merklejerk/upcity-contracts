@@ -2066,10 +2066,10 @@ find-up@^2.1.0:
   dependencies:
     locate-path "^2.0.0"
 
-flex-contract@^1.6.0:
-  version "1.6.0"
-  resolved "https://registry.yarnpkg.com/flex-contract/-/flex-contract-1.6.0.tgz#15a6281faef40dd588c7bf09b2bf065cc102ef17"
-  integrity sha512-7k77vf8kZDNnE+YLq5tZKRvkzsPky3mpsUCt/xBJnjVIoxWp0/9zZXYMHaNTeDZuI0wrLs5rZDICjc3p6qSaLw==
+flex-contract@^1.6.1:
+  version "1.6.1"
+  resolved "https://registry.yarnpkg.com/flex-contract/-/flex-contract-1.6.1.tgz#bfa33763b509737dc1f18e26248517552b918033"
+  integrity sha512-X1c8Y467Jhg6Zn3fQgUdUbxM7N2nNSKKTQ4/AOXcAr1y0hfitTsI8zF+mZ+hflM1zcUuEGs+azUGn9oxNySArw==
   dependencies:
     bignumber.js "^7.2.1"
     ethereumjs-util "^5.2.0"
@@ -4102,10 +4102,10 @@ solc@^0.5.1:
     tmp "0.0.33"
     yargs "^11.0.0"
 
-solpp@^0.8.0:
-  version "0.8.0"
-  resolved "https://registry.yarnpkg.com/solpp/-/solpp-0.8.0.tgz#45f864f4c9395641ce77e63d795adfdaf94d6086"
-  integrity sha512-1sf/3SQhFZolw2Kpi/GXvRxhmXxDiFRoJ5orBrLETBD1bvGYgEqknreQSrbFyAPoIiCViF03RJpzZpKyjyembw==
+solpp@^0.9.0:
+  version "0.9.0"
+  resolved "https://registry.yarnpkg.com/solpp/-/solpp-0.9.0.tgz#12725d971a6be5746d630862191a5ca5ea61cc69"
+  integrity sha512-2qfqXVDDqItY7oA9sYRTor05SfNplwj08Vy5ofHgFjcw+Nw5u9lmVTiU9ObWVQc4xZ/J92R3vUI9B4H2Q8kRfg==
   dependencies:
     antlr4 "^4.7.1"
     axios "^0.18.0"

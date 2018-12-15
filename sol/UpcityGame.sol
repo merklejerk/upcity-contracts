@@ -1,14 +1,21 @@
 pragma solidity ^0.5;
 
-// solhint-disable-next-line
 import './base/openzeppelin/math/SafeMath.sol';
 import './IResourceToken.sol';
 import './IMarket.sol';
 import './UpcityMath.sol';
+import './Uninitialized.sol';
+import './Restricted.sol';
+import './Nonpayable.sol';
 import './UpcityBase.sol';
 
 /// @title Game contract for upcity.app
-contract UpcityGame is UpcityBase {
+contract UpcityGame is
+		UpcityBase,
+		UpcityMath,
+		Uninitialized,
+		Nonpayable,
+		Restricted {
 	using SafeMath for uint256;
 
 	/// @dev Global block stats for each resource.
@@ -19,8 +26,6 @@ contract UpcityGame is UpcityBase {
 	IMarket private _market;
 	/// @dev Tiles by ID.
 	mapping(bytes16=>Tile) private _tiles;
-	/// @dev Who may call the init() and claimFunds() functions.
-	mapping(address=>bool) private _authorities;
 	/// @dev Ether which has "fallen off the edge".
 	/// Increased every time ether propogates to a tile
 	/// that has no owner. Can be claimed with claimFunds().
@@ -30,46 +35,33 @@ contract UpcityGame is UpcityBase {
 	event Collected(bytes16 indexed id);
 	event Built(bytes16 indexed id, bytes16 blocks);
 
-	constructor(
-			address[] memory tokens,
-			address market,
-			address[] memory authorities) public {
+	/// @dev Doesn't really do anything.
+	/// init() needs to be called by the creator before this contract
+	/// can be interacted with.
+	constructor() public { /* NOOP */ }
 
-		assert(tokens.length == NUM_RESOURCES);
+	function init(
+			address[NUM_RESOURCES] calldata tokens,
+			address market,
+			address[] calldata authorities,
+			address payable genesisOwner)
+			external onlyCreator onlyUninitialized {
+
+		require(tokens.length == NUM_RESOURCES, ERROR_INVALID);
 		for (uint256 i = 0; i < authorities.length; i++)
-			_authorities[authorities[i]] = true;
+			isAuthority[authorities[i]] = true;
 		for (uint256 i = 0; i < NUM_RESOURCES; i++)
 			_tokens[i] = IResourceToken(tokens[i]);
 		_market = IMarket(market);
-	}
 
-	/// @dev Restrict calls to only from an authority
-	modifier onlyAuthority() {
-		require(_authorities[msg.sender], ERROR_RESTRICTED);
-		_;
-	}
-
-	/// @dev Restrict calls to only uninitialized state.
-	modifier onlyUninitialized() {
-		require(!isTileAt(0, 0), ERROR_UNINITIALIZED);
-		_;
-	}
-
-	/// @dev Restrict calls to only initialized state.
-	modifier onlyInitialized() {
-		require(isTileAt(0, 0), ERROR_UNINITIALIZED);
-		_;
-	}
-
-	function init(address payable genesisOwner) public onlyUninitialized {
+		// Create the genesis tile and its neighbors.
 		Tile storage tile = _createTileAt(0, 0);
 		tile.owner = genesisOwner;
 		tile.timesBought = 1;
-		if (tile.basePrice > 0)
-			tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
-		else
-			tile.basePrice = MINIMUM_TILE_PRICE;
+		tile.basePrice = (MINIMUM_TILE_PRICE * PURCHASE_MARKUP) / PPM_ONE;
 		_createNeighbors(tile.position.x, tile.position.y);
+
+		isInitialized = true;
 	}
 
 	function toTileId(int32 x, int32 y) public view returns (bytes16) {
@@ -114,6 +106,8 @@ contract UpcityGame is UpcityBase {
 		tile.owner = msg.sender;
 		// Base price increases every time a tile is bought.
 		tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
+		// Create the neighboring tiles.
+		_createNeighbors(tile.position.x, tile.position.y);
 		uint256 taxes = (TAX_RATE * price) / PPM_ONE;
 		assert(taxes <= price);
 		// Pay previous owner.
@@ -133,35 +127,35 @@ contract UpcityGame is UpcityBase {
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
 		uint8 count = _getHeight(blocks);
-		require(count > 0 && count < MAX_HEIGHT, ERROR_INVALID);
+		require(count > 0 && count <= MAX_HEIGHT, ERROR_INVALID);
 		uint8 height = _getHeight(tile.blocks);
-		require(height < MAX_HEIGHT, ERROR_MAX_HEIGHT);
-		uint256[NUM_RESOURCES] memory cost = getBuildCost(x, y, blocks);
-		// #for N in range(NUM_RESOURCES)
-		_burn(tile.owner, $$(N), cost[$$(N)]);
-		// #done
-		tile.blocks = $(ASSIGN_BLOCKS(tile.blocks, count, height))
-		_incrementBlockStats(_countBlocks(blocks), height);
+		require(_isValidHeight(height + count), ERROR_MAX_HEIGHT);
+		_burn(tile.owner, getBuildCost(x, y, blocks));
+		tile.blocks = _assignBlocks(tile.blocks, blocks, height, count);
+		_incrementBlockStats(blocks);
 		emit Built(tile.id, tile.blocks);
 		return true;
 	}
 
 	function getBuildCost(int32 x, int32 y, bytes16 blocks)
 			public view returns (uint256[NUM_RESOURCES] memory) {
+
 		Tile storage tile = _getExistingTileAt(x, y);
 		uint8 height = _getHeight(tile.blocks);
+		require(height < MAX_HEIGHT, ERROR_MAX_HEIGHT);
 		uint256[NUM_RESOURCES] memory cost = $$(UINT256_ARRAY(3, 0));
 		// The global block totals.
 		uint64[NUM_RESOURCES] memory blockTotals =
 			$$(map(range(NUM_RESOURCES), (R) => `_blockStats[${R}].count`));
-		for (uint8 i = 0; i < MAX_HEIGHT - height; i++) {
+		for (uint8 i = 0; i < MAX_HEIGHT; i++) {
 			uint8 b = $(UNPACK_BLOCK(blocks, i));
-			if (isValidBlock(b))
+			if (!_isValidBlock(b))
 				break;
+			require(_isValidHeight(height + i + 1), ERROR_MAX_HEIGHT);
 			uint256[NUM_RESOURCES] memory bc = _getBlockCost(
 				b, blockTotals[b], height + i);
 			// #for N in range(NUM_RESOURCES)
-			cost[$$(N)] = bc[$$(N)].add(cost[$$(N)]);
+			cost[$$(N)] = cost[$$(N)].add(bc[$$(N)]);
 			// #done
 			blockTotals[b] += 1;
 		}
@@ -178,7 +172,7 @@ contract UpcityGame is UpcityBase {
 		uint256[NUM_RESOURCES] memory collected = $$(UINT256_ARRAY(3, 0));
 		for (uint8 height = 0; height < MAX_HEIGHT; height++) {
 			uint8 b = $(UNPACK_BLOCK(tile.blocks, height));
-			if (!isValidBlock(b))
+			if (!_isValidBlock(b))
 				break;
 			uint256 amt = ONE_TOKEN * _blockStats[b].production;
 			amt *= dt;
@@ -201,25 +195,27 @@ contract UpcityGame is UpcityBase {
 		return true;
 	}
 
-	function claimFunds() public onlyInitialized onlyAuthority {
+	function claimFunds(address payable dst)
+			public onlyInitialized onlyAuthority {
+
 		assert(address(this).balance >= fundsCollected);
 		if (fundsCollected > 0) {
 			uint256 funds = fundsCollected;
 			fundsCollected = 0;
-			msg.sender.transfer(funds);
+			dst.transfer(funds);
 		}
 	}
 
 	function _getBlockCost(uint8 _block, uint64 globalTotal, uint8 height)
-			private pure returns (uint256[NUM_RESOURCES] memory) {
+			private view returns (uint256[NUM_RESOURCES] memory) {
 
-		assert(isValidBlock(_block) && isValidHeight(height));
+		assert(_isValidBlock(_block) && _isValidHeight(height));
 		uint256 c = $(MAX(globalTotal, 1));
 		uint256 a = RESOURCE_ALPHAS[_block];
 		uint256 s = BLOCK_HEIGHT_PREMIUM[height] * $(MAX(c * a, PPM_ONE));
 		uint256[NUM_RESOURCES] memory cost = $$(UINT256_ARRAY(3, 0));
 		// #for N in range(NUM_RESOURCES)
-		cost[$(N)] = (ONE_TOKEN * RECIPES[_block][$(N)] * s) / PPM_ONE;
+		cost[$(N)] = (ONE_TOKEN * RECIPES[_block][$(N)] * s) / $$(PPM_ONE**2);
 		// #done
 		return cost;
 	}
@@ -259,18 +255,17 @@ contract UpcityGame is UpcityBase {
 		return tile;
 	}
 
-	function _incrementBlockStats(
-			uint8[NUM_RESOURCES] memory counts, uint8 height) private {
-
+	function _incrementBlockStats(bytes16 blocks) private {
 		for (uint8 h = 0; h < MAX_HEIGHT; h++) {
 			uint8 b = $(UNPACK_BLOCK(blocks, h));
-			if (!isValidBlock(b))
+			if (!_isValidBlock(b))
 				break;
-		BlockStats storage bs = _blockStats[_block];
-		bs.score += BLOCK_HEIGHT_BONUS[height];
-		bs.count += 1;
-		bs.production = 2 * uint256(UpcityMath.est_integer_sqrt(bs.count,
-			uint64(bs.production / 2)));
+			BlockStats storage bs = _blockStats[b];
+			bs.score += BLOCK_HEIGHT_BONUS[h];
+			bs.count += 1;
+			bs.production = 2 * uint256(UpcityMath.est_integer_sqrt(bs.count,
+				uint64(bs.production / 2)));
+		}
 	}
 
 	function _shareYield(
@@ -332,7 +327,7 @@ contract UpcityGame is UpcityBase {
 		uint256 price = tile.basePrice;
 		for (uint8 h = 0; h < MAX_HEIGHT; h++) {
 			uint8 b = $(UNPACK_BLOCK(tile.blocks, h));
-			if (!isValidBlock(b))
+			if (!_isValidBlock(b))
 				break;
 			uint256[NUM_RESOURCES] memory bc =
 				_getBlockCost(b, _blockStats[b].count, h);
@@ -369,38 +364,24 @@ contract UpcityGame is UpcityBase {
 		}
 	}
 
-	function _mintTo(address recipient, uint8 resource, uint256 amount) private {
+	function _mintTo(
+			address recipient, uint8 resource, uint256 amount) private {
+
 		if (amount > 0) {
 			if (recipient != ZERO_ADDRESS)
 				_tokens[resource].mint(recipient, amount);
 		}
 	}
 
-	function _burn(address owner, uint8 resource, uint256 amount) private {
+	function _burn(
+			address owner,
+			uint256[NUM_RESOURCES] memory resources) private {
+
 		assert(owner != ZERO_ADDRESS);
-		if (amount > 0)
-			_tokens[resource].burn(owner, amount);
-	}
-
-	function _getHeight(bytes16 blocks) private pure returns (uint8) {
-		for (uint8 i = 0; i < MAX_HEIGHT; i++) {
-			if ($(UNPACK_BLOCK(blocks, i)) > MAX_BLOCK_VALUE)
-				return i;
-		}
-		return MAX_HEIGHT;
-	}
-
-	function _countBlocks(bytes16 blocks)
-			private pure returns (uint8[NUM_RESOURCES]) {
-
-		uint8[NUM_RESOURCES] counts = $$(UINT8_ARRAY(NUM_RESOURCES, 0));
-		for (uint8 i = 0; i < MAX_HEIGHT; i++) {
-			uint8 b = $(UNPACK_BLOCK(blocks, i));
-			if (b > MAX_BLOCK_VALUE)
-				break;
-			counts[b] += 1;
-		}
-		return counts;
+		// #for N in range(NUM_RESOURCES)
+		if (resources[$(N)] > 0)
+			_tokens[$(N)].burn(owner, resources[$(N)]);
+		// #done
 	}
 
 	function _getMarketPrices() private view
@@ -411,5 +392,4 @@ contract UpcityGame is UpcityBase {
 		// #done
 		return prices;
 	}
-
 }

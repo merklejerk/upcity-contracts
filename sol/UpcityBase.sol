@@ -1,7 +1,5 @@
 pragma solidity ^0.5;
 
-import './UpcityMath.sol';
-
 // #def ONE_DAY 24 * 60 * 60
 
 // #def ONE_TOKEN 10**DECIMALS
@@ -10,15 +8,7 @@ import './UpcityMath.sol';
 
 // #def ARRAY_SEP concat(",\n", __indent)
 
-// #def UNPACK_BLOCK(blocks, idx) uint8(bytes1(blocks >> (8*idx)))
-
-// #def PACK_BLOCK(blocks, idx, block) \
-// 	(bytes16(blocks) & (~(bytes16(uint128(0xFF)) << (8*(idx))))) \
-// 	| ((bytes16(uint128(block) & 0xFF)) << (8*(idx)))
-
-// #def ASSIGN_BLOCKS(a, b, count, height) \
-// bytes16(a) & bytes16(~((uint128(0x1) << (uint8(count)*8)) - 1))
-// | (uint128(bytes16(b) >> (uint8(height)*8)));
+// #def UNPACK_BLOCK(blocks, idx) uint8(uint128(blocks) >> (8*(idx)))
 
 // #def UINT256_ARRAY(count, value) \
 // 	map(filled(count, value), AS_UINT256)
@@ -36,7 +26,8 @@ import './UpcityMath.sol';
 // #endif
 
 /// @title Constants and types for UpCityGame
-contract UpcityBase is UpcityMath {
+contract UpcityBase {
+
 	struct Position {
 		int32 x;
 		int32 y;
@@ -63,15 +54,6 @@ contract UpcityBase is UpcityMath {
 		uint256 score;
 		uint256 production;
 	}
-
-	string internal constant ERROR_MAX_HEIGHT = 'MAX_HEIGHT';
-	string internal constant ERROR_NOT_ALLOWED = 'NOT_ALLOWED';
-	string internal constant ERROR_ALREADY = 'ALREADY';
-	string internal constant ERROR_INSUFFICIENT = 'INSUFFICIENT';
-	string internal constant ERROR_RESTRICTED = 'RESTRICTED';
-	string internal constant ERROR_UNINITIALIZED = 'UNITIALIZED';
-	string internal constant ERROR_TIME_TRAVEL = 'TIME_TRAVEL';
-	string internal constant ERROR_INVALID = 'INVALID';
 
 	address internal constant ZERO_ADDRESS = address(0x0);
 	uint8 internal constant DECIMALS = $$(DECIMALS);
@@ -107,12 +89,28 @@ contract UpcityBase is UpcityMath {
 		[1, 1, 3]
 	];
 
-	function isValidBlock(uint8 _block) internal pure returns (bool) {
+	function _isValidBlock(uint8 _block) internal pure returns (bool) {
 		return _block <= MAX_BLOCK_VALUE;
 	}
 
-	function isValidHeight(uint8 height) internal pure returns (bool) {
+	function _isValidHeight(uint8 height) internal pure returns (bool) {
 		return height <= MAX_HEIGHT;
+	}
+
+	function _getHeight(bytes16 blocks) internal pure returns (uint8) {
+		for (uint8 i = 0; i < MAX_HEIGHT; i++) {
+			if (!_isValidBlock($(UNPACK_BLOCK(blocks, i))))
+				return i;
+		}
+		return MAX_HEIGHT;
+	}
+
+	function _assignBlocks(bytes16 a, bytes16 b, uint8 idx, uint8 count)
+			internal pure returns (bytes16) {
+
+		uint128 mask = ((uint128(1) << (count*8)) - 1) << (idx*8);
+		uint128 v = uint128(b) << (idx*8);
+		return bytes16((uint128(a) & ~mask) | (v & mask));
 	}
 
 	// solhint-disable func-order
