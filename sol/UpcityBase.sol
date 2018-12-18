@@ -28,25 +28,17 @@ pragma solidity ^0.5;
 /// @title Constants and types for UpCityGame
 contract UpcityBase {
 
-	struct Position {
-		int32 x;
-		int32 y;
-	}
-
 	struct Tile {
 		bytes16 id;
 		bytes16 blocks;
-		address payable owner;
 		uint32 timesBought;
-		Position position;
 		uint64 lastTouchTime;
+		int32 x;
+		int32 y;
+		address payable owner;
 		uint256 basePrice;
-		Credits credits;
-	}
-
-	struct Credits {
-		uint256[NUM_RESOURCES] resources;
-		uint256 funds;
+		uint256[NUM_RESOURCES] sharedResources;
+		uint256 sharedFunds;
 	}
 
 	struct BlockStats {

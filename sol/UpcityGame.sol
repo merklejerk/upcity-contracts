@@ -32,7 +32,7 @@ contract UpcityGame is
 	uint256 public fundsCollected = 0;
 
 	event Bought(bytes16 indexed id, address from, address to, uint256 price);
-	event Collected(bytes16 indexed id);
+	event Collected(bytes16 indexed id, address owner);
 	event Built(bytes16 indexed id, bytes16 blocks);
 
 	/// @dev Doesn't really do anything.
@@ -59,9 +59,45 @@ contract UpcityGame is
 		tile.owner = genesisOwner;
 		tile.timesBought = 1;
 		tile.basePrice = (MINIMUM_TILE_PRICE * PURCHASE_MARKUP) / PPM_ONE;
-		_createNeighbors(tile.position.x, tile.position.y);
+		_createNeighbors(tile.x, tile.y);
 
 		isInitialized = true;
+	}
+
+	function getPlayerBalance(address player)
+			external view returns (
+				uint256 funds,
+				uint256[NUM_RESOURCES] memory resources) {
+
+		funds = player.balance;
+		// #for RES in range(NUM_RESOURCES)
+		resources[$$(RES)] = _tokens[$$(RES)].balanceOf(player);
+		// #done
+	}
+
+	function describeTileAt(int32 _x, int32 _y) external view
+			returns (
+				bytes16 id,
+				int32 x,
+				int32 y,
+				uint32 timesBought,
+				uint64 lastTouchTime,
+				address owner,
+				bytes16 blocks,
+				uint256 price,
+				uint256[NUM_RESOURCES] memory resources,
+				uint256 funds) {
+
+		Tile storage tile = _getExistingTileAt(_x, _y);
+		id = tile.id;
+		x = tile.x;
+		y = tile.y;
+		timesBought = tile.timesBought; owner = tile.owner;
+		lastTouchTime = tile.lastTouchTime;
+		blocks = tile.blocks;
+		price = _getTilePrice(tile);
+		resources = _getTileYield(tile);
+		funds = tile.sharedFunds;
 	}
 
 	function toTileId(int32 x, int32 y) public view returns (bytes16) {
@@ -71,27 +107,6 @@ contract UpcityGame is
 	function isTileAt(int32 x, int32 y) public view returns (bool) {
 		Tile storage tile = _getTileAt(x, y);
 		return tile.id != 0x0;
-	}
-
-	function describeTileAt(int32 _x, int32 _y) public view
-			returns (
-				bytes16 id,
-				int32 x,
-				int32 y,
-				uint32 timesBought,
-				uint64 lastTouchTime,
-				address owner,
-				bytes16 blocks,
-				uint256 price) {
-
-		Tile storage tile = _getExistingTileAt(_x, _y);
-		id = tile.id;
-		x = tile.position.x;
-		y = tile.position.y;
-		timesBought = tile.timesBought; owner = tile.owner;
-		lastTouchTime = tile.lastTouchTime;
-		blocks = tile.blocks;
-		price = _getTilePrice(tile);
 	}
 
 	function buyTile(int32 x, int32 y)
@@ -107,12 +122,11 @@ contract UpcityGame is
 		// Base price increases every time a tile is bought.
 		tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
 		// Create the neighboring tiles.
-		_createNeighbors(tile.position.x, tile.position.y);
-		uint256 taxes = (TAX_RATE * price) / PPM_ONE;
-		assert(taxes <= price);
+		_createNeighbors(tile.x, tile.y);
+		// Share with neighbors.
+		_share(tile, price, $$(UINT256_ARRAY(NUM_RESOURCES, 0)));
 		// Pay previous owner.
-		_payTo(oldOwner, price - taxes);
-		_sharePurchase(tile, taxes);
+		_payTo(oldOwner, _toTaxed(price));
 		// Refund any overpayment.
 		if (msg.value > price)
 			_payTo(msg.sender, msg.value - price);
@@ -166,32 +180,22 @@ contract UpcityGame is
 			public onlyInitialized returns (bool) {
 
 		Tile storage tile = _getExistingTileAt(x, y);
-		require($(BLOCKTIME) >= tile.lastTouchTime, ERROR_TIME_TRAVEL);
-		uint256 dt = $(BLOCKTIME) - tile.lastTouchTime;
+		// If tile is unowned, it cannot yield anything.
+		if (tile.owner == ZERO_ADDRESS)
+			return false;
+
+		uint256[NUM_RESOURCES] memory produced = _getTileYield(tile);
+		uint256 funds = tile.sharedFunds;
+
 		tile.lastTouchTime = $(BLOCKTIME);
-		uint256[NUM_RESOURCES] memory collected = $$(UINT256_ARRAY(3, 0));
-		for (uint8 height = 0; height < MAX_HEIGHT; height++) {
-			uint8 b = $(UNPACK_BLOCK(tile.blocks, height));
-			if (!_isValidBlock(b))
-				break;
-			uint256 amt = ONE_TOKEN * _blockStats[b].production;
-			amt *= dt;
-			amt *= BLOCK_HEIGHT_BONUS[height];
-			amt /= _blockStats[b].score;
-			amt /= ONE_DAY * PPM_ONE**2;
-			collected[b] = collected[b].add(amt);
-		}
-		// Share with neighbors.
-		// #for N in range(NUM_RESOURCES)
-		_shareYield(tile, $$(N),
-			(collected[$$(N)] * TAX_RATE) / PPM_ONE);
-		// #done
-		// Credit owner.
-		// #for N in range(NUM_RESOURCES)
-		_mintTo(tile.owner, $$(N),
-			collected[$$(N)] - (collected[$$(N)] * TAX_RATE) / PPM_ONE);
-		// #done
-		emit Collected(tile.id);
+		tile.sharedResources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
+		tile.sharedFunds = 0;
+
+		// Share to neighbors.
+		_share(tile, funds, produced);
+		// Pay to owner.
+		_claim(tile.owner, funds, produced);
+		emit Collected(tile.id, tile.owner);
 		return true;
 	}
 
@@ -204,6 +208,28 @@ contract UpcityGame is
 			fundsCollected = 0;
 			dst.transfer(funds);
 		}
+	}
+
+	function _getTileYield(Tile storage tile)
+			private view returns (uint256[NUM_RESOURCES] memory) {
+
+		assert(tile.id != 0x0);
+		require($(BLOCKTIME) >= tile.lastTouchTime, ERROR_TIME_TRAVEL);
+		uint64 dt = $(BLOCKTIME) - tile.lastTouchTime;
+		// Geneerate resources on top of what's been shared to this tile.
+		uint256[NUM_RESOURCES] memory produced = tile.sharedResources;
+		for (uint8 height = 0; height < MAX_HEIGHT; height++) {
+			uint8 b = $(UNPACK_BLOCK(tile.blocks, height));
+			if (!_isValidBlock(b))
+				break;
+			uint256 amt = ONE_TOKEN * _blockStats[b].production;
+			amt *= dt;
+			amt *= BLOCK_HEIGHT_BONUS[height];
+			amt /= _blockStats[b].score;
+			amt /= ONE_DAY * PPM_ONE**2;
+			produced[b] = produced[b].add(amt);
+		}
+		return produced;
 	}
 
 	function _getBlockCost(uint8 _block, uint64 globalTotal, uint8 height)
@@ -225,7 +251,8 @@ contract UpcityGame is
 		Tile storage tile = _tiles[id];
 		assert(tile.id == 0x0);
 		tile.id = id;
-		tile.position = Position(x, y);
+		tile.x = x;
+		tile.y = y;
 		tile.blocks = EMPTY_BLOCKS;
 		return tile;
 	}
@@ -268,38 +295,50 @@ contract UpcityGame is
 		}
 	}
 
-	function _shareYield(
-			Tile storage tile, uint8 resource, uint256 amount)
-			private returns (bool) {
+	function _share(
+			Tile storage tile,
+			uint256 funds,
+			uint256[NUM_RESOURCES] memory resources)
+			private {
 
-		if (amount > 0) {
-			uint256 taxes = amount / NUM_NEIGHBORS;
-			assert(taxes <= amount);
-			_mintTo(tile.owner, resource, amount - taxes);
-			for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
-				(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
-				int32 nx = tile.position.x + ox;
-				int32 ny = tile.position.y + oy;
-				Tile storage neighbor = _getTileAt(nx, ny);
-				if (neighbor.id != 0x0)
-					_grantToTile(neighbor, resource, taxes);
+		// Compute how much each neighbor is entitled to.
+		uint256 sharedFunds = _toTaxes(funds) / NUM_NEIGHBORS;
+		uint256[NUM_RESOURCES] memory sharedResources =
+			$$(UINT256_ARRAY(NUM_RESOURCES, 0));
+		for (uint8 res = 0; res < NUM_RESOURCES; res++)
+			sharedResources[res] = _toTaxes(resources[res]) / NUM_NEIGHBORS;
+		// Share with neighbors.
+		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
+			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
+			int32 nx = tile.x + ox;
+			int32 ny = tile.y + oy;
+			Tile storage neighbor = _getExistingTileAt(nx, ny);
+			// If the tile is owned, share resources and funds.
+			if (neighbor.owner != ZERO_ADDRESS) {
+				// #for RES in range(NUM_RESOURCES)
+				tile.sharedResources[$$(RES)] =
+					tile.sharedResources[$$(RES)].add(sharedResources[$$(RES)]);
+				// #done
+				tile.sharedFunds = tile.sharedFunds.add(sharedFunds);
+			} else {
+				// Neighbor is unowned, so only collect funds.
+				fundsCollected = fundsCollected.add(sharedFunds);
 			}
 		}
-		return true;
 	}
 
-	function _sharePurchase(
-			Tile storage tile, uint256 amount)
-			private returns (bool) {
+	function _claim(
+			address payable whom,
+			uint256 funds,
+			uint256[NUM_RESOURCES] memory resources)
+			private {
 
-			for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
-				(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
-				int32 nx = tile.position.x + ox;
-				int32 ny = tile.position.y + oy;
-				Tile storage neighbor = _getTileAt(nx, ny);
-				_payToTile(neighbor, amount / NUM_NEIGHBORS);
-			}
-		}
+		require(whom != ZERO_ADDRESS, ERROR_INVALID);
+		// #for RES in range(NUM_RESOURCES)
+		_mintTo(whom, $$(RES), _toTaxed(resources[$$(RES)]));
+		// #done
+		_payTo(whom, _toTaxed(funds));
+	}
 
 	function _getTilePrice(Tile storage tile)
 			private view returns (uint256) {
@@ -309,8 +348,8 @@ contract UpcityGame is
 		uint256 neighborPrices = 0;
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
-			int32 nx = tile.position.x + ox;
-			int32 ny = tile.position.y + oy;
+			int32 nx = tile.x + ox;
+			int32 ny = tile.y + oy;
 			Tile storage neighbor = _getTileAt(nx, ny);
 			if (neighbor.id != 0x0)
 				neighborPrices = neighborPrices.add(
@@ -338,28 +377,13 @@ contract UpcityGame is
 		return price;
 	}
 
-	function _grantToTile(Tile storage tile, uint8 resource, uint256 amount)
-			private {
-
-		tile.credits.resources[resource] =
-			tile.credits.resources[resource].add(amount);
-	}
-
-	function _payToTile(Tile storage tile, uint256 amount) private {
-		// If the tile is unowned, just keep the ether.
-		if (tile.owner == ZERO_ADDRESS)
-			fundsCollected = fundsCollected.add(amount);
-		else
-			tile.credits.funds = tile.credits.funds.add(amount);
-	}
-
 	function _payTo(address payable recipient, uint256 amount) private {
-		// solhint-disable multiple-sends, no-empty-blocks
+		require(recipient != ZERO_ADDRESS, ERROR_INVALID);
 		if (amount > 0) {
-			if (recipient == ZERO_ADDRESS)
-				fundsCollected = fundsCollected.add(amount);
-			else if (!recipient.send(amount)) {
-				// Ignored.
+			// send() will forward a minimal amount of gas to the recipient.
+			// If the transfer fails, we swallow the failure.
+			if (!recipient.send(amount)) {
+				// Return value ignored.
 			}
 		}
 	}
@@ -367,10 +391,8 @@ contract UpcityGame is
 	function _mintTo(
 			address recipient, uint8 resource, uint256 amount) private {
 
-		if (amount > 0) {
-			if (recipient != ZERO_ADDRESS)
-				_tokens[resource].mint(recipient, amount);
-		}
+		if (amount > 0)
+			_tokens[resource].mint(recipient, amount);
 	}
 
 	function _burn(
@@ -391,5 +413,13 @@ contract UpcityGame is
 		prices[$(RES)] = _market.getPrice(address(_tokens[$(RES)]));
 		// #done
 		return prices;
+	}
+
+	function _toTaxed(uint256 amount) private pure returns (uint256) {
+		return amount - (amount * TAX_RATE) / PPM_ONE;
+	}
+
+	function _toTaxes(uint256 amount) private pure returns (uint256) {
+		return (amount * TAX_RATE) / PPM_ONE;
 	}
 }

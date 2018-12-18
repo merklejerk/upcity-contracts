@@ -2,6 +2,7 @@
 const _ = require('lodash');
 const assert = require('assert');
 const bn = require('bn-str-256');
+const ethjs = require('ethereumjs-util');
 const testbed = require('../src/testbed');
 const constants = require('../constants.js');
 const ERRORS = require('./lib/errors.js');
@@ -19,6 +20,7 @@ const RESERVE = ONE_TOKEN;
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
 const CONNECTOR_WEIGHT = Math.round(1e6 * constants.CONNECTOR_WEIGHT);
 const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
+const ONE_DAY = 24 * 60 * 60;
 const CONTRACTS = [
 	'UpcityResourceToken', 'UpcityMarket', 'UpcityGame', 'GasGuzzler'
 ];
@@ -48,8 +50,19 @@ function unpackDescription(r) {
 		lastTouchTime: bn.toNumber(r[4]),
 		owner: r[5],
 		blocks: decodeBlocks(r[6]),
-		price: bn.parse(r[7])
+		price: r[7],
+		resources: r[8],
+		funds: r[9]
 	};
+}
+
+function toInt32Buffer(v) {
+	if (bn.lt(v, 0)) {
+		// Encode as two's complement.
+		const bits = _.map(bn.toBits(bn.abs(v), -4*8), b => (b+1) % 2);
+		v = bn.add(bn.fromBits(bits), 1);
+	}
+	return bn.toBuffer(v, 4);
 }
 
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
@@ -64,6 +77,24 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await this.tokens[res].mint(whom, tokens[res]);
 	}
 
+	function toTileId(x, y) {
+		const data = Buffer.concat([
+			toInt32Buffer(x),
+			toInt32Buffer(y),
+			ethjs.toBuffer(this.game.address)
+		]);
+		return ethjs.bufferToHex(ethjs.keccak256(data)).slice(0, 16*2+2);
+	}
+
+	async function buildTower(x, y, blocks, caller=null) {
+		if (!caller)
+			caller = (await describeTileAt(x, y)).owner;
+		let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
+		await grantTokens(caller, cost);
+		return this.game.buildBlocks(x, y, encodeBlocks(blocks),
+			{from: caller});
+	}
+
 	before(async function() {
 		_.assign(this, await testbed({
 			contracts: CONTRACTS}));
@@ -74,6 +105,8 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		this.game = this.contracts['UpcityGame'];
 		describeTileAt = _.bind(describeTileAt, this);
 		grantTokens = _.bind(grantTokens, this);
+		toTileId = _.bind(toTileId, this);
+		buildTower = _.bind(buildTower, this);
 	});
 
 	beforeEach(async function() {
@@ -94,6 +127,14 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.init(tokens, {value: MARKET_DEPOSIT});
 		await this.game.init(tokens, this.market.address,
 			[this.authority], this.genesisPlayer);
+	});
+
+	it('cannot call init again', async function() {
+		const tokens = _.map(this.tokens, t => t.address);
+		await assert.rejects(
+			this.game.init(tokens, this.market.address,
+				[this.authority], this.genesisPlayer),
+			ERRORS.UNINITIALIZED);
 	});
 
 	it('genesis owner owns genesis tile', async function() {
@@ -227,10 +268,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const [x, y] = [0, 0];
 		const numBlocks = _.random(1, MAX_HEIGHT);
 		const blocks = _.times(numBlocks, i => _.sample(BLOCKS));
-		const cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
-		await grantTokens(player, cost);
-		const tx = await this.game.buildBlocks(x, y,  encodeBlocks(blocks),
-			{from: player});
+		const tx = await buildTower(x, y, blocks, player);
 		assert(tx.findEvent('Built'));
 		const {blocks: built} = await describeTileAt(x, y);
 		assert.deepEqual(built, blocks);
@@ -240,10 +278,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const player = this.genesisPlayer;
 		const [x, y] = [0, 0];
 		const blocks = _.times(MAX_HEIGHT, i => _.sample(BLOCKS));
-		const cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
-		await grantTokens(player, cost);
-		const tx = await this.game.buildBlocks(x, y,  encodeBlocks(blocks),
-			{from: player});
+		const tx = await buildTower(x, y, blocks, player);
 		assert(tx.findEvent('Built'));
 		const {blocks: built} = await describeTileAt(x, y);
 		assert.deepEqual(built, blocks);
@@ -254,16 +289,10 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const [x, y] = [0, 0];
 		const blocks = _.times(_.random(1, MAX_HEIGHT-1),
 			i => _.sample(BLOCKS));
-		let cost = await this.game.getBuildCost(x, y, blocks);
-		await grantTokens(player, cost);
-		await this.game.buildBlocks(x, y,  encodeBlocks(blocks),
-			{from: player});
+		await buildTower(x, y, blocks, player);
 		const newBlocks = _.times(MAX_HEIGHT - blocks.length,
 			i => _.sample(blocks));
-		cost = await this.game.getBuildCost(x, y, encodeBlocks(newBlocks));
-		await grantTokens(player, cost);
-		await this.game.buildBlocks(x, y, encodeBlocks(newBlocks),
-			{from: player});
+		await buildTower(x, y, newBlocks, player);
 		const {blocks: built} = await describeTileAt(x, y);
 		assert.deepEqual(built, [...blocks, ...newBlocks]);
 	});
@@ -303,7 +332,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	it('cannot build beyond max height', async function() {
 		const player = this.genesisPlayer;
 		const [x, y] = [0, 0];
-		let blocks = _.times(_.random(0, MAX_HEIGHT-1), i => _.sample(BLOCKS));
+		let blocks = _.times(_.random(1, MAX_HEIGHT-1), i => _.sample(BLOCKS));
 		let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
 		// We need to allocate more resources for the next build since we can't
 		// get block costs on a complete tower.
@@ -318,9 +347,20 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	it('cannot build on a tile owned by someone else', async function() {
 		const [builder] = _.sampleSize(this.users, 1);
+		const [x, y] = [0, 0];
 		const blocks = encodeBlocks([ONITE_BLOCK]);
-		await assert.rejects(this.game.buildBlocks(0, 0, blocks),
+		await assert.rejects(this.game.buildBlocks(x, y, blocks),
 			ERRORS.NOT_ALLOWED);
+	});
+
+	it('cannot build without sufficient resources', async function() {
+		const player = this.genesisPlayer;
+		const [x, y] = [0, 0];
+		const blocks = _.times(_.random(1, MAX_HEIGHT), i => _.sample(BLOCKS));
+		const cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
+		await grantTokens(player, _.map(cost, c => bn.max(bn.sub(c, 1), 0)));
+		await assert.rejects(this.game.buildBlocks(x, y, blocks, {from: player}),
+			ERRORS.INSUFFICIENT);
 	});
 
 	it('building blocks burn resources', async function() {
@@ -348,6 +388,65 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			{from: player, value: tile.price});
 		const funds = await this.game.fundsCollected();
 		assert(bn.gt(funds, 0));
+	});
+
+	it('buying a tile first does a collect', async function() {
+		const [buyer] = _.sampleSize(this.users, 1);
+		const [x, y] = [0, 0];
+		let tile = await describeTileAt(x, y);
+		const prevOwner = tile.owner;
+		const ownerBalance = await this.eth.getBalance(prevOwner);
+		const tx = await this.game.buyTile(x, y,
+			{from: buyer, value: tile.price});
+		assert(tx.findEvent('Collected', {id: toTileId(x, y)}));
+	});
+
+	it('building on a tile first does a collect', async function() {
+		const player = this.genesisPlayer;
+		const [x, y] = [0, 0];
+		let blocks = _.times(_.random(1, MAX_HEIGHT), i => _.sample(BLOCKS));
+		let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
+		await grantTokens(player, cost);
+		const tx = await this.game.buildBlocks(x, y, encodeBlocks(blocks),
+			{from: player});
+		assert(tx.findEvent('Collected', {id: toTileId(x, y)}));
+	});
+
+	it('collect on unowned tile does nothing', async function() {
+		const [caller] = _.sampleSize(this.users, 1);
+		const [x, y] = _.sample(NEIGHBOR_OFFSETS);
+		await this.game.__advanceTime(ONE_DAY);
+		const tx = await this.game.collect(x, y);
+		assert(!tx.findEvent('Collected', {id: toTileId(x, y)}));
+	});
+
+	it('cannot collect nonexistant tile', async function() {
+		const [caller] = _.sampleSize(this.users, 1);
+		const [x, y] = [100, -100];
+		await this.game.__advanceTime(ONE_DAY);
+		await assert.rejects(this.game.collect(x, y), ERRORS.INVALID);
+	});
+
+	it('collect pays tile owner, not caller', async function() {
+		const owner = this.genesisPlayer;
+		const [caller] = _.sampleSize(this.users, 1);
+		const [x, y] = [0, 0];
+		// Build one of each block.
+		await buildTower(x, y, BLOCKS, owner);
+		await this.game.__advanceTime(ONE_DAY);
+		const oldBalanceOwner = await this.game.getPlayerBalance(owner);
+		const oldBalanceCaller = await this.game.getPlayerBalance(caller);
+		const tx = await this.game.collect(x, y);
+		assert(tx.findEvent('Collected',
+			{id: toTileId(x, y), owner: owner}));
+		const newBalanceOwner = await this.game.getPlayerBalance(owner);
+		const newBalanceCaller = await this.game.getPlayerBalance(caller);
+		for (let res = 0; res < NUM_RESOURCES; res++) {
+			assert(bn.gt(newBalanceOwner.resources[res],
+				oldBalanceOwner.resources[res]));
+			assert(bn.eq(newBalanceCaller.resources[res],
+				oldBalanceCaller.resources[res]));
+		}
 	});
 
 });
