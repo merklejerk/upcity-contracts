@@ -29,11 +29,13 @@ contract UpcityGame is
 	/// @dev Ether which has "fallen off the edge".
 	/// Increased every time ether propogates to a tile
 	/// that has no owner. Can be claimed with claimFunds().
-	uint256 public fundsCollected = 0;
+	uint256 public feesCollected = 0;
 
 	event Bought(bytes16 indexed id, address from, address to, uint256 price);
 	event Collected(bytes16 indexed id, address owner);
 	event Built(bytes16 indexed id, bytes16 blocks);
+	event Paid(address to, uint256 amount);
+	event FeesCollected(address to, uint256 amount);
 
 	/// @dev Doesn't really do anything.
 	/// init() needs to be called by the creator before this contract
@@ -199,14 +201,15 @@ contract UpcityGame is
 		return true;
 	}
 
-	function claimFunds(address payable dst)
+	function collectFees(address payable to)
 			public onlyInitialized onlyAuthority {
 
-		assert(address(this).balance >= fundsCollected);
-		if (fundsCollected > 0) {
-			uint256 funds = fundsCollected;
-			fundsCollected = 0;
-			dst.transfer(funds);
+		assert(address(this).balance >= feesCollected);
+		if (feesCollected > 0) {
+			uint256 fees = feesCollected;
+			feesCollected = 0;
+			to.transfer(fees);
+			emit FeesCollected(to, fees);
 		}
 	}
 
@@ -278,7 +281,7 @@ contract UpcityGame is
 
 		bytes16 id = toTileId(x, y);
 		Tile storage tile = _tiles[id];
-		require(tile.id == id, ERROR_INVALID);
+		require(tile.id == id, ERROR_NOT_FOUND);
 		return tile;
 	}
 
@@ -322,7 +325,7 @@ contract UpcityGame is
 				tile.sharedFunds = tile.sharedFunds.add(sharedFunds);
 			} else {
 				// Neighbor is unowned, so only collect funds.
-				fundsCollected = fundsCollected.add(sharedFunds);
+				feesCollected = feesCollected.add(sharedFunds);
 			}
 		}
 	}
@@ -378,13 +381,18 @@ contract UpcityGame is
 	}
 
 	function _payTo(address payable recipient, uint256 amount) private {
-		require(recipient != ZERO_ADDRESS, ERROR_INVALID);
+		// Payments to zero address are fees collected.
+		if (recipient == ZERO_ADDRESS) {
+			feesCollected = feesCollected.add(feesCollected);
+			return;
+		}
 		if (amount > 0) {
 			// send() will forward a minimal amount of gas to the recipient.
 			// If the transfer fails, we swallow the failure.
 			if (!recipient.send(amount)) {
 				// Return value ignored.
 			}
+			emit Paid(recipient, amount);
 		}
 	}
 
@@ -422,4 +430,19 @@ contract UpcityGame is
 	function _toTaxes(uint256 amount) private pure returns (uint256) {
 		return (amount * TAX_RATE) / PPM_ONE;
 	}
+
+	// #if TEST
+	function __fundTileAt(
+			int32 x,
+			int32 y,
+			uint256[NUM_RESOURCES] calldata resources) external payable {
+
+		Tile storage tile = _getExistingTileAt(x, y);
+		tile.sharedFunds = tile.sharedFunds.add(msg.value);
+		// #for RES in range(NUM_RESOURCES)
+		tile.sharedResources[$(RES)] =
+			tile.sharedResources[$(RES)].add(resources[$(RES)]);
+		// #done
+	}
+	// #endif
 }

@@ -19,6 +19,7 @@ module.exports = {
 		'RESTRICTED',
 		'UNINITIALIZED',
 		'TIME_TRAVEL',
-		'INVALID'
+		'INVALID',
+		'NOT_FOUND'
 	]
 };

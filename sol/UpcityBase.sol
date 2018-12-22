@@ -4,7 +4,7 @@ pragma solidity ^0.5;
 
 // #def ONE_TOKEN 10**DECIMALS
 
-// #def NEIGHBOR_OFFSET(idx) ((int32(idx)%3-1), (1-int32(idx)/2))
+// #def NEIGHBOR_OFFSET(idx) (((int32(idx)%3)-1), (1-int32(idx)/2))
 
 // #def ARRAY_SEP concat(",\n", __indent)
 
