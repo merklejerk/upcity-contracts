@@ -246,7 +246,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert(bn.gt(newPrice, price));
 	});
 
-	it('buying a tile creates all its neighbors', async function() {
+	it('buying an edge tile creates all its neighbors', async function() {
 		const [buyer] = _.sampleSize(this.users, 1);
 		const [x, y] = _.sample(NEIGHBOR_OFFSETS);
 		const neighbors = _.map(NEIGHBOR_OFFSETS, ([ox, oy]) => [x+ox, y+oy]);
@@ -254,6 +254,15 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const exists = await Promise.all(
 			_.map(neighbors, n => this.game.isTileAt(...n)));
 		assert(_.every(exists));
+	});
+
+	it('buying an edge tile increases fees collected', async function() {
+		const [buyer] = _.sampleSize(this.users, 1);
+		const [x, y] = _.sample(NEIGHBOR_OFFSETS);
+		const feesBefore = await this.game.feesCollected();
+		await buyTile(x, y, buyer);
+		const feesAfter = await this.game.feesCollected();
+		assert(bn.gt(feesAfter, feesBefore));
 	});
 
 	it('buying a tile increases its neighbors\' price', async function() {
