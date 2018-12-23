@@ -43,16 +43,16 @@ function encodeBlocks(blocks) {
 
 function unpackDescription(r) {
 	return {
-		id: r[0],
-		x: bn.toNumber(r[1]),
-		y: bn.toNumber(r[2]),
-		timesBought: bn.toNumber(r[3]),
-		lastTouchTime: bn.toNumber(r[4]),
-		owner: r[5],
-		blocks: decodeBlocks(r[6]),
-		price: r[7],
-		resources: r[8],
-		funds: r[9]
+		id: r.id,
+		x: bn.toNumber(r.x),
+		y: bn.toNumber(r.y),
+		timesBought: bn.toNumber(r.timesBought),
+		lastTouchTime: bn.toNumber(r.lastTouchTime),
+		owner: r.owner,
+		blocks: decodeBlocks(r.blocks),
+		price: r.price,
+		resources: r.resources,
+		funds: r.funds
 	};
 }
 
@@ -306,6 +306,16 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await buyTile(x, y, buyer);
 		const feesAfter = await this.game.feesCollected();
 		assert(bn.gt(feesAfter, feesBefore));
+	});
+
+	it('buying a tile shares funds to owned neighbors', async function() {
+		const buyer = _.sample(this.users);
+		const tiles = [_.sample(NEIGHBOR_OFFSETS), [0, 0]];
+		await buyTile(...tiles[0], buyer);
+		const fundsBefore = (await describeTileAt(...tiles[0])).funds;
+		await buyTile(...tiles[1], buyer);
+		const fundsAfter = (await describeTileAt(...tiles[0])).funds;
+		assert(bn.gt(fundsAfter, fundsBefore));
 	});
 
 	it('buying a tile increases its neighbors\' price', async function() {

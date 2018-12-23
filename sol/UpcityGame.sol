@@ -98,8 +98,12 @@ contract UpcityGame is
 		lastTouchTime = tile.lastTouchTime;
 		blocks = tile.blocks;
 		price = _getTilePrice(tile);
-		resources = _getTileYield(tile);
-		funds = tile.sharedFunds;
+		resources =  _getTileYield(tile);
+		// #for RES in range(NUM_RESOURCES)
+		resources[$(RES)] =
+			resources[$(RES)].add(_toTaxed(tile.sharedResources[$(RES)]));
+		// #done
+		funds = _toTaxed(tile.sharedFunds);
 	}
 
 	function toTileId(int32 x, int32 y) public view returns (bytes16) {
@@ -319,10 +323,10 @@ contract UpcityGame is
 			// If the tile is owned, share resources and funds.
 			if (neighbor.owner != ZERO_ADDRESS) {
 				// #for RES in range(NUM_RESOURCES)
-				tile.sharedResources[$$(RES)] =
-					tile.sharedResources[$$(RES)].add(sharedResources[$$(RES)]);
+				neighbor.sharedResources[$$(RES)] =
+					neighbor.sharedResources[$$(RES)].add(sharedResources[$$(RES)]);
 				// #done
-				tile.sharedFunds = tile.sharedFunds.add(sharedFunds);
+				neighbor.sharedFunds = neighbor.sharedFunds.add(sharedFunds);
 			} else {
 				// Neighbor is unowned, so only collect funds.
 				feesCollected = feesCollected.add(sharedFunds);
