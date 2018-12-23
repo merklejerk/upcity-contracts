@@ -26,15 +26,20 @@ contract UpcityGame is
 	IMarket private _market;
 	/// @dev Tiles by ID.
 	mapping(bytes16=>Tile) private _tiles;
-	/// @dev Ether which has "fallen off the edge".
-	/// Increased every time ether propogates to a tile
-	/// that has no owner. Can be claimed with claimFunds().
+	/// @dev Payments to individual players when someone buys their tile.
+	/// Can be pulled vial collectPayment().
+	mapping(address=>uint256) public payments;
+	/// @dev Fees collected.
+	/// These are funds that have been shared to unowned tiles as well as
+	/// funds paid to buy unowned tiles.
+	/// An authority may call collectFees() to withdraw these fees.
 	uint256 public feesCollected = 0;
 
 	event Bought(bytes16 indexed id, address from, address to, uint256 price);
-	event Collected(bytes16 indexed id, address owner);
+	event TileCollected(bytes16 indexed id, address owner);
+	event PaymentCollected(address indexed owner, address to, uint256 amount);
 	event Built(bytes16 indexed id, bytes16 blocks);
-	event Paid(address to, uint256 amount);
+	event Credited(address indexed to, uint256 amount);
 	event FeesCollected(address to, uint256 amount);
 
 	/// @dev Doesn't really do anything.
@@ -46,7 +51,7 @@ contract UpcityGame is
 			address[NUM_RESOURCES] calldata tokens,
 			address market,
 			address[] calldata authorities,
-			address payable genesisOwner)
+			address genesisOwner)
 			external onlyCreator onlyUninitialized {
 
 		require(tokens.length == NUM_RESOURCES, ERROR_INVALID);
@@ -64,6 +69,69 @@ contract UpcityGame is
 		_createNeighbors(tile.x, tile.y);
 
 		isInitialized = true;
+	}
+
+	function buyTile(int32 x, int32 y)
+			external payable onlyInitialized returns (bool) {
+
+		collect(x, y);
+		Tile storage tile = _getExistingTileAt(x, y);
+		require(tile.owner != msg.sender, ERROR_ALREADY);
+		uint256 price = _getTilePrice(tile);
+		require(msg.value >= price, ERROR_INSUFFICIENT);
+		address oldOwner = tile.owner;
+		tile.owner = msg.sender;
+		// Base price increases every time a tile is bought.
+		tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
+		// Create the neighboring tiles.
+		_createNeighbors(tile.x, tile.y);
+		// Share with neighbors.
+		_share(tile, price, $$(UINT256_ARRAY(NUM_RESOURCES, 0)));
+		// Pay previous owner.
+		_creditTo(oldOwner, _toTaxed(price));
+		// Refund any overpayment.
+		if (msg.value > price)
+			_creditTo(msg.sender, msg.value - price);
+		emit Bought(tile.id, oldOwner, tile.owner, price);
+		return true;
+	}
+
+	function buildBlocks(int32 x, int32 y, bytes16 blocks)
+			external onlyInitialized returns (bool) {
+
+		collect(x, y);
+		Tile storage tile = _getExistingTileAt(x, y);
+		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
+		uint8 count = _getHeight(blocks);
+		require(count > 0 && count <= MAX_HEIGHT, ERROR_INVALID);
+		uint8 height = _getHeight(tile.blocks);
+		require(_isValidHeight(height + count), ERROR_MAX_HEIGHT);
+		_burn(tile.owner, getBuildCost(x, y, blocks));
+		tile.blocks = _assignBlocks(tile.blocks, blocks, height, count);
+		_incrementBlockStats(blocks);
+		emit Built(tile.id, tile.blocks);
+		return true;
+	}
+
+	function collectFees(address to)
+			external onlyInitialized onlyAuthority {
+
+		assert(feesCollected <= address(this).balance);
+		if (feesCollected > 0) {
+			uint256 amount = feesCollected;
+			feesCollected = 0;
+			_transferTo(to, amount);
+			emit FeesCollected(to, amount);
+		}
+	}
+
+	function collectPayment(address to) external {
+		uint256 amount = payments[msg.sender];
+		if (amount > 0) {
+			payments[msg.sender] = 0;
+			_transferTo(to, amount);
+			emit PaymentCollected(msg.sender, to, amount);
+		}
 	}
 
 	function getPlayerBalance(address player)
@@ -98,12 +166,35 @@ contract UpcityGame is
 		lastTouchTime = tile.lastTouchTime;
 		blocks = tile.blocks;
 		price = _getTilePrice(tile);
-		resources =  _getTileYield(tile);
+		resources = _getTileYield(tile);
 		// #for RES in range(NUM_RESOURCES)
 		resources[$(RES)] =
 			resources[$(RES)].add(_toTaxed(tile.sharedResources[$(RES)]));
 		// #done
 		funds = _toTaxed(tile.sharedFunds);
+	}
+
+	function collect(int32 x, int32 y)
+			public onlyInitialized returns (bool) {
+
+		Tile storage tile = _getExistingTileAt(x, y);
+		// If tile is unowned, it cannot yield anything.
+		if (tile.owner == ZERO_ADDRESS)
+			return false;
+
+		uint256[NUM_RESOURCES] memory produced = _getTileYield(tile);
+		uint256 funds = tile.sharedFunds;
+
+		tile.lastTouchTime = $(BLOCKTIME);
+		tile.sharedResources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
+		tile.sharedFunds = 0;
+
+		// Share to neighbors.
+		_share(tile, funds, produced);
+		// Pay to owner.
+		_claim(tile.owner, funds, produced);
+		emit TileCollected(tile.id, tile.owner);
+		return true;
 	}
 
 	function toTileId(int32 x, int32 y) public view returns (bytes16) {
@@ -113,48 +204,6 @@ contract UpcityGame is
 	function isTileAt(int32 x, int32 y) public view returns (bool) {
 		Tile storage tile = _getTileAt(x, y);
 		return tile.id != 0x0;
-	}
-
-	function buyTile(int32 x, int32 y)
-			public payable onlyInitialized returns (bool) {
-
-		collect(x, y);
-		Tile storage tile = _getExistingTileAt(x, y);
-		require(tile.owner != msg.sender, ERROR_ALREADY);
-		uint256 price = _getTilePrice(tile);
-		require(msg.value >= price, ERROR_INSUFFICIENT);
-		address payable oldOwner = tile.owner;
-		tile.owner = msg.sender;
-		// Base price increases every time a tile is bought.
-		tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
-		// Create the neighboring tiles.
-		_createNeighbors(tile.x, tile.y);
-		// Share with neighbors.
-		_share(tile, price, $$(UINT256_ARRAY(NUM_RESOURCES, 0)));
-		// Pay previous owner.
-		_payTo(oldOwner, _toTaxed(price));
-		// Refund any overpayment.
-		if (msg.value > price)
-			_payTo(msg.sender, msg.value - price);
-		emit Bought(tile.id, oldOwner, tile.owner, price);
-		return true;
-	}
-
-	function buildBlocks(int32 x, int32 y, bytes16 blocks)
-			public onlyInitialized returns (bool) {
-
-		collect(x, y);
-		Tile storage tile = _getExistingTileAt(x, y);
-		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
-		uint8 count = _getHeight(blocks);
-		require(count > 0 && count <= MAX_HEIGHT, ERROR_INVALID);
-		uint8 height = _getHeight(tile.blocks);
-		require(_isValidHeight(height + count), ERROR_MAX_HEIGHT);
-		_burn(tile.owner, getBuildCost(x, y, blocks));
-		tile.blocks = _assignBlocks(tile.blocks, blocks, height, count);
-		_incrementBlockStats(blocks);
-		emit Built(tile.id, tile.blocks);
-		return true;
 	}
 
 	function getBuildCost(int32 x, int32 y, bytes16 blocks)
@@ -182,40 +231,6 @@ contract UpcityGame is
 		return cost;
 	}
 
-	function collect(int32 x, int32 y)
-			public onlyInitialized returns (bool) {
-
-		Tile storage tile = _getExistingTileAt(x, y);
-		// If tile is unowned, it cannot yield anything.
-		if (tile.owner == ZERO_ADDRESS)
-			return false;
-
-		uint256[NUM_RESOURCES] memory produced = _getTileYield(tile);
-		uint256 funds = tile.sharedFunds;
-
-		tile.lastTouchTime = $(BLOCKTIME);
-		tile.sharedResources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
-		tile.sharedFunds = 0;
-
-		// Share to neighbors.
-		_share(tile, funds, produced);
-		// Pay to owner.
-		_claim(tile.owner, funds, produced);
-		emit Collected(tile.id, tile.owner);
-		return true;
-	}
-
-	function collectFees(address payable to)
-			public onlyInitialized onlyAuthority {
-
-		assert(address(this).balance >= feesCollected);
-		if (feesCollected > 0) {
-			uint256 fees = feesCollected;
-			feesCollected = 0;
-			to.transfer(fees);
-			emit FeesCollected(to, fees);
-		}
-	}
 
 	function _getTileYield(Tile storage tile)
 			private view returns (uint256[NUM_RESOURCES] memory) {
@@ -328,14 +343,14 @@ contract UpcityGame is
 				// #done
 				neighbor.sharedFunds = neighbor.sharedFunds.add(sharedFunds);
 			} else {
-				// Neighbor is unowned, so only collect funds.
+				// If the tile is unowned, keep the funds as fees.
 				feesCollected = feesCollected.add(sharedFunds);
 			}
 		}
 	}
 
 	function _claim(
-			address payable whom,
+			address whom,
 			uint256 funds,
 			uint256[NUM_RESOURCES] memory resources)
 			private {
@@ -344,7 +359,14 @@ contract UpcityGame is
 		// #for RES in range(NUM_RESOURCES)
 		_mintTo(whom, $$(RES), _toTaxed(resources[$$(RES)]));
 		// #done
-		_payTo(whom, _toTaxed(funds));
+		_transferTo(whom, _toTaxed(funds));
+	}
+
+	function _transferTo(address to, uint256 amount) private {
+		// Use fallback function and forward all remaining gas.
+		//solhint-disable-next-line
+		(bool success,) = to.call.value(amount)("");
+		require(success, ERROR_TRANSFER_FAILED);
 	}
 
 	function _getTilePrice(Tile storage tile)
@@ -384,19 +406,17 @@ contract UpcityGame is
 		return price;
 	}
 
-	function _payTo(address payable recipient, uint256 amount) private {
-		// Payments to zero address are fees collected.
-		if (recipient == ZERO_ADDRESS) {
-			feesCollected = feesCollected.add(feesCollected);
-			return;
-		}
+	function _creditTo(address recipient, uint256 amount) private {
 		if (amount > 0) {
-			// send() will forward a minimal amount of gas to the recipient.
-			// If the transfer fails, we swallow the failure.
-			if (!recipient.send(amount)) {
-				// Return value ignored.
+			// Payments to zero address are just fees collected.
+			if (recipient == ZERO_ADDRESS) {
+				feesCollected = feesCollected.add(amount);
+			} else {
+				// Just credit the player. She can collect it later through
+				// collectPayment().
+				payments[recipient] = payments[recipient].add(amount);
 			}
-			emit Paid(recipient, amount);
+			emit Credited(recipient, amount);
 		}
 	}
 
@@ -451,6 +471,10 @@ contract UpcityGame is
 
 	function __fundFees() external payable {
 		feesCollected = feesCollected.add(msg.value);
+	}
+
+	function __fundPlayer(address to) external payable {
+		payments[to] = payments[to].add(msg.value);
 	}
 	// #endif
 }

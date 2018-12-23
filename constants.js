@@ -20,6 +20,8 @@ module.exports = {
 		'UNINITIALIZED',
 		'TIME_TRAVEL',
 		'INVALID',
-		'NOT_FOUND'
+		'NOT_FOUND',
+		'GAS',
+		'TRANSFER_FAILED'
 	]
 };

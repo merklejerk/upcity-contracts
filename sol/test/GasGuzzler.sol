@@ -18,6 +18,7 @@ interface IGame {
 contract GasGuzzler {
 
 	IGame internal _game;
+	uint256[] _arr;
 
 	constructor(address game) public payable {
 		_game = IGame(game);
@@ -25,8 +26,10 @@ contract GasGuzzler {
 
 	function () payable external {
 		uint256 x = 0;
-		for (uint256 i = 0; i < $$(10e6); i++)
+		for (uint256 i = 0; i < $$(10e6); i++) {
 			x += 1;
+			_arr.push(x);
+		}
 	}
 
 	function buyTile(int32 x, int32 y) external payable returns (bool) {

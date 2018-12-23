@@ -35,7 +35,7 @@ contract UpcityBase {
 		uint64 lastTouchTime;
 		int32 x;
 		int32 y;
-		address payable owner;
+		address owner;
 		uint256 basePrice;
 		uint256[NUM_RESOURCES] sharedResources;
 		uint256 sharedFunds;
