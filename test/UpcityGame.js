@@ -143,6 +143,49 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			ERRORS.UNINITIALIZED);
 	});
 
+	it('non-authority cannot claim fees', async function() {
+		const [caller, dst] = _.sampleSize(this.users, 2);
+		const amount = 100;
+		await this.game.__fundFees({value: amount});
+		await assert.rejects(this.game.collectFees(dst, {from: caller}));
+	});
+
+	it('authority can claim fees to itself', async function() {
+		// Needs to be high enough to cover gas.
+		const amount = ONE_TOKEN;
+		await this.game.__fundFees({value: amount});
+		const balanceBefore = await this.eth.getBalance(this.authority);
+		const tx = await this.game.collectFees(this.authority,
+			{from: this.authority});
+		assert(tx.findEvent('FeesCollected',
+			{to: this.authority, amount: bn.parse(amount)}));
+		const balanceAfter = await this.eth.getBalance(this.authority);
+		assert(bn.gt(balanceAfter, balanceBefore));
+	});
+
+	it('authority can claim fees to another wallet', async function() {
+		const dst = _.sample(this.users);
+		const amount = 100;
+		const balanceBefore = await this.eth.getBalance(dst);
+		await this.game.__fundFees({value: amount});
+		const tx = await this.game.collectFees(dst, {from: this.authority});
+		assert(tx.findEvent('FeesCollected',
+			{to: dst, amount: bn.parse(amount)}));
+		const balanceAfter = await this.eth.getBalance(dst);
+		assert(bn.gt(balanceAfter, balanceBefore));
+	});
+
+	it('claiming fees resets fees to zero.', async function() {
+		const dst = _.sample(this.users);
+		const amount = 100;
+		await this.game.__fundFees({value: amount});
+		const tx = await this.game.collectFees(dst, {from: this.authority});
+		assert(tx.findEvent('FeesCollected',
+			{to: dst, amount: bn.parse(amount)}));
+		const fees = await this.game.feesCollected();
+		assert.equal(fees, '0');
+	});
+
 	it('genesis owner owns genesis tile', async function() {
 		const tile = await describeTileAt(0, 0);
 		assert.equal(tile.owner, this.genesisPlayer);

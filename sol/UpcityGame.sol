@@ -444,5 +444,9 @@ contract UpcityGame is
 			tile.sharedResources[$(RES)].add(resources[$(RES)]);
 		// #done
 	}
+
+	function __fundFees() external payable {
+		feesCollected = feesCollected.add(msg.value);
+	}
 	// #endif
 }
