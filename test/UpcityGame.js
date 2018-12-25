@@ -477,13 +477,26 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.deepEqual(supplies, initialSupplies);
 	});
 
-	it('buying edge tile increases fees collected', async function() {
+	it('buying an unowned tile increases fees collected', async function() {
 		const [player] = _.sampleSize(this.users, 1);
-		let tile = await describeTileAt(0, 0);
-		const tx = await this.game.buyTile(0, 0,
+		const [x, y] = _.sample(NEIGHBOR_OFFSETS);
+		let tile = await describeTileAt(x, y);
+		const feesBefore = await this.game.feesCollected();
+		const tx = await this.game.buyTile(x, y,
 			{from: player, value: tile.price});
-		const funds = await this.game.feesCollected();
-		assert(bn.gt(funds, 0));
+		const feesAfter = await this.game.feesCollected();
+		assert(bn.gt(feesAfter, feesBefore));
+	});
+
+	it('buying an owned edge tile increases fees collected', async function() {
+		const [player] = _.sampleSize(this.users, 1);
+		const [x, y] = [0, 0];
+		let tile = await describeTileAt(x, y);
+		const feesBefore = await this.game.feesCollected();
+		const tx = await this.game.buyTile(x, y,
+			{from: player, value: tile.price});
+		const feesAfter = await this.game.feesCollected();
+		assert(bn.gt(feesAfter, feesBefore));
 	});
 
 	it('buying a tile first does a collect', async function() {

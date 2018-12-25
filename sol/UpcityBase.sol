@@ -35,6 +35,8 @@ contract UpcityBase {
 		uint64 lastTouchTime;
 		int32 x;
 		int32 y;
+		uint8 height;
+		uint8 neighborCloutsTotal;
 		address owner;
 		uint256 basePrice;
 		uint256[NUM_RESOURCES] sharedResources;
@@ -62,13 +64,13 @@ contract UpcityBase {
 	uint64 internal constant TAX_RATE = $$(TO_PPM(1/NUM_NEIGHBORS));
 	uint256 internal constant MINIMUM_TILE_PRICE = $$(int(ONE_TOKEN * MINIMUM_TILE_PRICE));
 	uint64 internal constant PURCHASE_MARKUP = $$(TO_PPM(1+PURCHASE_MARKUP));
-	// #def BLOCK_HEIGHT_PREMIUM_BASE 2**(1/(MAX_HEIGHT-1))
+	// #def BLOCK_HEIGHT_PREMIUM_BASE 4**(1/(MAX_HEIGHT-1))
 	// In PPM.
 	uint64[MAX_HEIGHT] BLOCK_HEIGHT_PREMIUM = [
 		$$(join(map(range(MAX_HEIGHT),
 		h => AS_UINT64(TO_PPM(BLOCK_HEIGHT_PREMIUM_BASE**h))), ARRAY_SEP))
 	];
-	// #def BLOCK_HEIGHT_BONUS_BASE 4**(1/(MAX_HEIGHT-1))
+	// #def BLOCK_HEIGHT_BONUS_BASE 2**(1/(MAX_HEIGHT-1))
 	// In PPM.
 	uint64[MAX_HEIGHT] BLOCK_HEIGHT_BONUS = [
 		$$(join(map(range(MAX_HEIGHT),
@@ -87,14 +89,6 @@ contract UpcityBase {
 
 	function _isValidHeight(uint8 height) internal pure returns (bool) {
 		return height <= MAX_HEIGHT;
-	}
-
-	function _getHeight(bytes16 blocks) internal pure returns (uint8) {
-		for (uint8 i = 0; i < MAX_HEIGHT; i++) {
-			if (!_isValidBlock($(UNPACK_BLOCK(blocks, i))))
-				return i;
-		}
-		return MAX_HEIGHT;
 	}
 
 	function _assignBlocks(bytes16 a, bytes16 b, uint8 idx, uint8 count)

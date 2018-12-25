@@ -102,12 +102,19 @@ contract UpcityGame is
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
-		uint8 count = _getHeight(blocks);
-		require(count > 0 && count <= MAX_HEIGHT, ERROR_INVALID);
-		uint8 height = _getHeight(tile.blocks);
-		require(_isValidHeight(height + count), ERROR_MAX_HEIGHT);
-		_burn(tile.owner, getBuildCost(x, y, blocks));
-		tile.blocks = _assignBlocks(tile.blocks, blocks, height, count);
+		(uint256[NUM_RESOURCES] memory cost, uint8 count) =
+			_getBuildCostAndCount(x, y, blocks);
+		require(count > 0, ERROR_INVALID);
+		require(_isValidHeight(tile.height + count), ERROR_MAX_HEIGHT);
+		_burn(msg.sender, cost);
+		tile.blocks = _assignBlocks(tile.blocks, blocks, tile.height, count);
+		tile.height += count;
+		// Increase clout total for each neighbor.
+		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
+			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
+			Tile storage neighbor = _getTileAt(tile.x + ox, tile.y + oy);
+			neighbor.neighborCloutsTotal += count;
+		}
 		_incrementBlockStats(blocks);
 		emit Built(tile.id, tile.blocks);
 		return true;
@@ -209,28 +216,33 @@ contract UpcityGame is
 	function getBuildCost(int32 x, int32 y, bytes16 blocks)
 			public view returns (uint256[NUM_RESOURCES] memory) {
 
+		(uint256[NUM_RESOURCES] memory cost,) = _getBuildCostAndCount(x, y, blocks);
+		return cost;
+	}
+
+	function _getBuildCostAndCount(int32 x, int32 y, bytes16 blocks)
+			private view returns (uint256[NUM_RESOURCES] memory, uint8) {
+
 		Tile storage tile = _getExistingTileAt(x, y);
-		uint8 height = _getHeight(tile.blocks);
-		require(height < MAX_HEIGHT, ERROR_MAX_HEIGHT);
 		uint256[NUM_RESOURCES] memory cost = $$(UINT256_ARRAY(3, 0));
 		// The global block totals.
 		uint64[NUM_RESOURCES] memory blockTotals =
 			$$(map(range(NUM_RESOURCES), (R) => `_blockStats[${R}].count`));
-		for (uint8 i = 0; i < MAX_HEIGHT; i++) {
-			uint8 b = $(UNPACK_BLOCK(blocks, i));
+		uint8 count = 0;
+		for (; count < MAX_HEIGHT; count++) {
+			uint8 b = $(UNPACK_BLOCK(blocks, count));
 			if (!_isValidBlock(b))
 				break;
-			require(_isValidHeight(height + i + 1), ERROR_MAX_HEIGHT);
+			require(_isValidHeight(tile.height + count + 1), ERROR_MAX_HEIGHT);
 			uint256[NUM_RESOURCES] memory bc = _getBlockCost(
-				b, blockTotals[b], height + i);
+				b, blockTotals[b], tile.height + count);
 			// #for N in range(NUM_RESOURCES)
 			cost[$$(N)] = cost[$$(N)].add(bc[$$(N)]);
 			// #done
 			blockTotals[b] += 1;
 		}
-		return cost;
+		return (cost, count);
 	}
-
 
 	function _getTileYield(Tile storage tile)
 			private view returns (uint256[NUM_RESOURCES] memory) {
@@ -271,21 +283,20 @@ contract UpcityGame is
 	function _createTileAt(int32 x, int32 y) private returns (Tile storage) {
 		bytes16 id = toTileId(x, y);
 		Tile storage tile = _tiles[id];
-		assert(tile.id == 0x0);
-		tile.id = id;
-		tile.x = x;
-		tile.y = y;
-		tile.blocks = EMPTY_BLOCKS;
+		if (tile.id == 0x0) {
+			tile.id = id;
+			tile.x = x;
+			tile.y = y;
+			tile.blocks = EMPTY_BLOCKS;
+			tile.neighborCloutsTotal = NUM_NEIGHBORS;
+		}
 		return tile;
 	}
 
 	function _createNeighbors(int32 x, int32 y) private {
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
-			int32 nx = x + ox;
-			int32 ny = y + oy;
-			if (!isTileAt(nx, ny))
-				_createTileAt(nx, ny);
+			_createTileAt(x + ox, y + oy);
 		}
 	}
 
@@ -326,25 +337,27 @@ contract UpcityGame is
 		// Compute how much each neighbor is entitled to.
 		uint256 sharedFunds = _toTaxes(funds) / NUM_NEIGHBORS;
 		uint256[NUM_RESOURCES] memory sharedResources =
-			$$(UINT256_ARRAY(NUM_RESOURCES, 0));
-		for (uint8 res = 0; res < NUM_RESOURCES; res++)
-			sharedResources[res] = _toTaxes(resources[res]) / NUM_NEIGHBORS;
+			$$(map(range(NUM_RESOURCES),
+				(R) => `_toTaxes(resources[${R}]) / NUM_NEIGHBORS`));
 		// Share with neighbors.
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
-			int32 nx = tile.x + ox;
-			int32 ny = tile.y + oy;
-			Tile storage neighbor = _getExistingTileAt(nx, ny);
+			Tile storage neighbor = _getExistingTileAt(tile.x + ox, tile.y + oy);
+			// Normalization factor so that taller towers receive more.
+			uint64 clout = ($(MAX(neighbor.height, 1)) * PPM_ONE)
+				/ tile.neighborCloutsTotal;
 			// If the tile is owned, share resources and funds.
 			if (neighbor.owner != ZERO_ADDRESS) {
 				// #for RES in range(NUM_RESOURCES)
 				neighbor.sharedResources[$$(RES)] =
-					neighbor.sharedResources[$$(RES)].add(sharedResources[$$(RES)]);
+					neighbor.sharedResources[$$(RES)].add(
+						(clout * sharedResources[$$(RES)]) / PPM_ONE);
 				// #done
 				neighbor.sharedFunds = neighbor.sharedFunds.add(sharedFunds);
 			} else {
 				// If the tile is unowned, keep the funds as fees.
-				feesCollected = feesCollected.add(sharedFunds);
+				feesCollected = feesCollected.add(
+					(clout * sharedFunds) / PPM_ONE);
 			}
 		}
 	}
@@ -369,17 +382,13 @@ contract UpcityGame is
 		require(success, ERROR_TRANSFER_FAILED);
 	}
 
-	function _getTilePrice(Tile storage tile)
-			private view returns (uint256) {
-
+	function _getTilePrice(Tile storage tile) private view returns (uint256) {
 		uint256[NUM_RESOURCES] memory marketPrices = _getMarketPrices();
 		uint256 price = _getIsolatedTilePrice(tile, marketPrices);
 		uint256 neighborPrices = 0;
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
-			int32 nx = tile.x + ox;
-			int32 ny = tile.y + oy;
-			Tile storage neighbor = _getTileAt(nx, ny);
+			Tile storage neighbor = _getTileAt(tile.x + ox, tile.y + oy);
 			if (neighbor.id != 0x0)
 				neighborPrices = neighborPrices.add(
 					_getIsolatedTilePrice(neighbor, marketPrices));
