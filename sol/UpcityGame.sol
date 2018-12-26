@@ -335,16 +335,15 @@ contract UpcityGame is
 			private {
 
 		// Compute how much each neighbor is entitled to.
-		uint256 sharedFunds = _toTaxes(funds) / NUM_NEIGHBORS;
+		uint256 sharedFunds = _toTaxes(funds);
 		uint256[NUM_RESOURCES] memory sharedResources =
-			$$(map(range(NUM_RESOURCES),
-				(R) => `_toTaxes(resources[${R}]) / NUM_NEIGHBORS`));
+			$$(map(range(NUM_RESOURCES), (R) => `_toTaxes(resources[${R}])`));
 		// Share with neighbors.
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
 			Tile storage neighbor = _getExistingTileAt(tile.x + ox, tile.y + oy);
 			// Normalization factor so that taller towers receive more.
-			uint64 clout = ($(MAX(neighbor.height, 1)) * PPM_ONE)
+			uint64 clout = ((neighbor.height + 1) * PPM_ONE)
 				/ tile.neighborCloutsTotal;
 			// If the tile is owned, share resources and funds.
 			if (neighbor.owner != ZERO_ADDRESS) {
