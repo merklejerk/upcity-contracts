@@ -3,7 +3,6 @@ pragma solidity ^0.5;
 import './base/openzeppelin/math/SafeMath.sol';
 import './IResourceToken.sol';
 import './IMarket.sol';
-import './UpcityMath.sol';
 import './Uninitialized.sol';
 import './Restricted.sol';
 import './Nonpayable.sol';
@@ -12,7 +11,6 @@ import './UpcityBase.sol';
 /// @title Game contract for upcity.app
 contract UpcityGame is
 		UpcityBase,
-		UpcityMath,
 		Uninitialized,
 		Nonpayable,
 		Restricted {
@@ -205,7 +203,7 @@ contract UpcityGame is
 	}
 
 	function toTileId(int32 x, int32 y) public view returns (bytes16) {
-		return bytes16(keccak256(abi.encodePacked(x, y, address(this))));
+		return _toTileId(x, y);
 	}
 
 	function isTileAt(int32 x, int32 y) public view returns (bool) {
@@ -263,6 +261,12 @@ contract UpcityGame is
 			amt /= ONE_DAY * PPM_ONE**2;
 			produced[b] = produced[b].add(amt);
 		}
+		// If the tile is in season, it has a yield bonus.
+		if (_isTileInSeason(tile)) {
+			// #for RES in range(NUM_RESOURCES)
+			produced[$(RES)] = produced[$(RES)].mul(SEASON_YIELD_BONUS) / PPM_ONE;
+			// #done
+		}
 		return produced;
 	}
 
@@ -281,7 +285,7 @@ contract UpcityGame is
 	}
 
 	function _createTileAt(int32 x, int32 y) private returns (Tile storage) {
-		bytes16 id = toTileId(x, y);
+		bytes16 id = _toTileId(x, y);
 		Tile storage tile = _tiles[id];
 		if (tile.id == 0x0) {
 			tile.id = id;
@@ -303,13 +307,13 @@ contract UpcityGame is
 	function _getTileAt(int32 x, int32 y)
 			private view returns (Tile storage) {
 
-		return _tiles[toTileId(x, y)];
+		return _tiles[_toTileId(x, y)];
 	}
 
 	function _getExistingTileAt(int32 x, int32 y)
 			private view returns (Tile storage) {
 
-		bytes16 id = toTileId(x, y);
+		bytes16 id = _toTileId(x, y);
 		Tile storage tile = _tiles[id];
 		require(tile.id == id, ERROR_NOT_FOUND);
 		return tile;
@@ -323,7 +327,7 @@ contract UpcityGame is
 			BlockStats storage bs = _blockStats[b];
 			bs.score += BLOCK_HEIGHT_BONUS[h];
 			bs.count += 1;
-			bs.production = 2 * uint256(UpcityMath.est_integer_sqrt(bs.count,
+			bs.production = 2 * uint256(_est_integer_sqrt(bs.count,
 				uint64(bs.production / 2)));
 		}
 	}
@@ -392,7 +396,11 @@ contract UpcityGame is
 				neighborPrices = neighborPrices.add(
 					_getIsolatedTilePrice(neighbor, marketPrices));
 		}
-		return price.add(neighborPrices) / NUM_NEIGHBORS;
+		price = price.add(neighborPrices) / NUM_NEIGHBORS;
+		// If the tile is in season, it has a price bonus.
+		if (_isTileInSeason(tile))
+			price = price.mul(SEASON_PRICE_BONUS) / PPM_ONE;
+		return price;
 	}
 
 	function _getIsolatedTilePrice(
@@ -455,15 +463,36 @@ contract UpcityGame is
 		return prices;
 	}
 
-	function _toTaxed(uint256 amount) private pure returns (uint256) {
-		return amount - (amount * TAX_RATE) / PPM_ONE;
+	// #if !TEST
+
+	/// @dev Check if a tile is in season (has a bonus in effect).
+	/// @param tile The tile to check.
+	/// @return true if tile is in season.
+	function _isTileInSeason(Tile storage tile) private view returns (bool) {
+		return uint128(tile.id) % NUM_WEEKS == _getCalendarWeek();
 	}
 
-	function _toTaxes(uint256 amount) private pure returns (uint256) {
-		return (amount * TAX_RATE) / PPM_ONE;
+	// #else
+	// solhint-disable
+
+	/// @dev Whether seasons are disabled.
+	bool public __disableSeasons;
+
+	/// @dev Check if a tile is in season (has a bonus in effect).
+	/// @param tile The tile to check.
+	/// @return true if tile is in season or seasons are disabled.
+	function _isTileInSeason(Tile storage tile) private view returns (bool) {
+		if (__disableSeasons)
+			return false;
+		return uint128(tile.id) % NUM_WEEKS == _getCalendarWeek();
 	}
 
-	// #if TEST
+	/// @dev Test function to toggle seasons.
+	function __toggleSeasons(bool enabled) public {
+		__disableSeasons = !enabled;
+	}
+
+	/// @dev Test function to toggle seasons.
 	function __fundTileAt(
 			int32 x,
 			int32 y,
@@ -484,5 +513,6 @@ contract UpcityGame is
 	function __fundPlayer(address to) external payable {
 		payments[to] = payments[to].add(msg.value);
 	}
+
 	// #endif
 }

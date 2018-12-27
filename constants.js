@@ -1,4 +1,7 @@
 module.exports = {
+	CALENDAR_START: Math.floor((new Date('Jan 1, 2019')).getTime() / 1000),
+	SEASON_YIELD_BONUS: 0.25,
+	SEASON_PRICE_BONUS: 0.5,
 	NUM_RESOURCES: 3,
 	NUM_NEIGHBORS: 6,
 	CONNECTOR_WEIGHT: 0.33,
