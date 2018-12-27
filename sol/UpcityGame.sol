@@ -196,7 +196,7 @@ contract UpcityGame is
 
 		// Share to neighbors.
 		_share(tile, funds, produced);
-		// Pay to owner.
+		// Pay/credit owner.
 		_claim(tile.owner, funds, produced);
 		emit TileCollected(tile.id, tile.owner);
 		return true;
@@ -375,14 +375,11 @@ contract UpcityGame is
 		// #for RES in range(NUM_RESOURCES)
 		_mintTo(whom, $$(RES), _toTaxed(resources[$$(RES)]));
 		// #done
-		_transferTo(whom, _toTaxed(funds));
-	}
-
-	function _transferTo(address to, uint256 amount) private {
-		// Use fallback function and forward all remaining gas.
-		//solhint-disable-next-line
-		(bool success,) = to.call.value(amount)("");
-		require(success, ERROR_TRANSFER_FAILED);
+		// If caller is not recipient, only credit funds.
+		if (whom != msg.sender)
+			_creditTo(whom, _toTaxed(funds));
+		else // Otherwise try to transfer the funds synchronously.
+			_transferTo(whom, _toTaxed(funds));
 	}
 
 	function _getTilePrice(Tile storage tile) private view returns (uint256) {
@@ -420,6 +417,15 @@ contract UpcityGame is
 			// #done
 		}
 		return price;
+	}
+
+	function _transferTo(address to, uint256 amount) private {
+		// Use fallback function and forward all remaining gas.
+		if (amount > 0) {
+			//solhint-disable-next-line
+			(bool success,) = to.call.value(amount)("");
+			require(success, ERROR_TRANSFER_FAILED);
+		}
 	}
 
 	function _creditTo(address recipient, uint256 amount) private {
@@ -514,5 +520,6 @@ contract UpcityGame is
 		payments[to] = payments[to].add(msg.value);
 	}
 
+	// solhint-enable
 	// #endif
 }
