@@ -1,6 +1,7 @@
 'use strict'
 const _ = require('lodash');
 const crypto = require('crypto');
+const {promisify} = require('util');
 const fs = require('mz/fs');
 const path = require('path');
 const ganache = require('ganache-cli');
@@ -71,6 +72,32 @@ function randomPrivateKey() {
 	return ethjs.bufferToHex(crypto.randomBytes(32));
 }
 
+async function saveSnapshot(provider) {
+	const payload = {
+		jsonrpc: '2.0',
+		method: 'evm_snapshot',
+		id: crypto.randomBytes(32).toString('hex'),
+		params: []
+	};
+	const resp = await promisify(provider.sendAsync)(payload);
+	if (resp.error)
+		throw new Error(resp.error);
+	return resp.result;
+}
+
+async function restoreSnapshot(provider, id) {
+	const payload = {
+		jsonrpc: '2.0',
+		method: 'evm_revert',
+		id: crypto.randomBytes(32).toString('hex'),
+		params: [id]
+	};
+	const resp = await promisify(provider.sendAsync)(payload);
+	if (resp.error)
+		throw new Error(resp.error);
+	return resp.result;
+}
+
 module.exports = async function(opts={}) {
 	const accounts = createAccounts(opts.accounts, opts.balance);
 	const providerOpts = {
@@ -95,6 +122,8 @@ module.exports = async function(opts={}) {
 			i => new FlexContract(artifacts[i], contractOpts)));
 	return {
 		provider: provider,
+		saveSnapshot: () => saveSnapshot(provider),
+		restoreSnapshot: (id) => restoreSnapshot(provider, id),
 		accounts: _.map(accounts, a => a.address),
 		eth: eth,
 		contracts: contracts

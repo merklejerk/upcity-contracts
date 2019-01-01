@@ -498,7 +498,12 @@ contract UpcityGame is
 		__disableSeasons = !enabled;
 	}
 
-	/// @dev Test function to toggle seasons.
+	/// @dev Test function to add shared funds and resources to a tile.
+	/// Any ether paid to this function will be added to the shared funds
+	/// of the tile.
+	/// @param x X coordinate of tile.
+	/// @param y Y coordinate of tile.
+	/// @param y Y Resources to add.
 	function __fundTileAt(
 			int32 x,
 			int32 y,
@@ -512,6 +517,18 @@ contract UpcityGame is
 		// #done
 	}
 
+	/// @dev Test function to drain all funds and resources from a tile.
+	/// @param x X coordinate of tile.
+	/// @param y Y coordinate of tile.
+	function __drainTileAt(int32 x, int32 y) external {
+		Tile storage tile = _getExistingTileAt(x, y);
+		tile.sharedFunds = 0;
+		// #for RES in range(NUM_RESOURCES)
+		tile.sharedResources[$(RES)] = 0;
+		// #done
+	}
+
+	/// @dev Test function to add fees collected to the contract.
 	function __fundFees() external payable {
 		feesCollected = feesCollected.add(msg.value);
 	}

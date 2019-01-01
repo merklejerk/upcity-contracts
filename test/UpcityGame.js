@@ -20,6 +20,7 @@ const RESERVE = ONE_TOKEN;
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
 const CONNECTOR_WEIGHT = Math.round(1e6 * constants.CONNECTOR_WEIGHT);
 const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
+const NUM_NEIGHBORS = NEIGHBOR_OFFSETS.length;
 const ONE_DAY = 24 * 60 * 60;
 const CONTRACTS = [
 	'UpcityResourceToken', 'UpcityMarket', 'UpcityGame', 'GasGuzzler'
@@ -113,9 +114,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		toTileId = _.bind(toTileId, this);
 		buildTower = _.bind(buildTower, this);
 		buyTile = _.bind(buyTile, this);
-	});
 
-	beforeEach(async function() {
 		await this.market.new(CONNECTOR_WEIGHT);
 		const tx = await this.game.new();
 		this.tokens = [];
@@ -133,6 +132,14 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.init(tokens, {value: MARKET_DEPOSIT});
 		await this.game.init(tokens, this.market.address,
 			[this.authority], this.genesisPlayer);
+	});
+
+	beforeEach(async function() {
+		this.snapshotId = await this.saveSnapshot();
+	});
+
+	afterEach(async function() {
+		await this.restoreSnapshot(this.snapshotId);
 	});
 
 	it('cannot call init again', async function() {
@@ -580,6 +587,47 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const tile = await describeTileAt(x, y);
 		for (let res = 0; res < NUM_RESOURCES; res++)
 			assert(bn.eq(tile.resources[res], 0));
+	});
+
+	it('collect shares resources evenly among empty, owned tiles', async function() {
+		const centerOwner = this.genesisOwner;
+		const neighbors = _.map(
+			_.zip(_.sampleSize(this.users, NUM_NEIGHBORS), NEIGHBOR_OFFSETS),
+			([player, [nx, ny]]) => ({player: player, x: nx, y: ny}));
+		const [x, y] = [0, 0];
+		// Build one of each block in the center tile.
+		await buildTower(x, y, BLOCKS, centerOwner);
+		// Buy up all the tiles around it.
+		await Promise.all(_.map(neighbors, n => buyTile(n.x, n.y, n.player)));
+		// Drain any shared funds they received from all the buying.
+		for (let n of neighbors)
+			await this.game.__drainTileAt(n.x, n.y);
+		// Advance time and collect from the center tile.
+		await this.game.__advanceTime(ONE_DAY);
+		await this.game.collect(x, y, {from: centerOwner});
+		// Now see how much each neighbor got.
+		const neighborInfos = await Promise.all(
+			_.map(neighbors, n => describeTileAt(n.x, n.y)));
+		const totalShared = _.reduce(neighborInfos,
+			(t, ni) => {
+				t.resources = _.map(
+					_.zip(t.resources, ni.resources), ([a, b]) => bn.add(a, b));
+				t.funds = bn.add(t.funds, ni.funds);
+				return t;
+			},
+			{funds: '0', resources: _.times(NUM_RESOURCES, i => '0')});
+		const avgShared = _.mapValues(totalShared,
+			v => {
+				if (_.isArray(v))
+					return _.map(v, v => bn.idiv(v, neighbors.length));
+				return bn.idiv(v, neighbors.length);
+			});
+		// Since all neighbors are empty, they should have all received the average.
+		for (let ni of neighborInfos) {
+			for (let res = 0; res < NUM_RESOURCES; res++)
+				assert.equal(ni.resources[res], avgShared.resources[res]);
+			assert.equal(ni.funds, avgShared.funds);
+		}
 	});
 
 });
