@@ -9,7 +9,7 @@
 	"private": false,
 	"scripts": {
 		"build": "node src/build",
-		"test": "TARGET=test node src/build && mocha --timeout 8000 test/*.js",
+		"test": "TARGET=test node src/build && mocha --timeout 30000 test/*.js",
 		"deploy": "TARGET=release node src/build && node src/deploy",
 		"clean": "node src/clean"
 	},

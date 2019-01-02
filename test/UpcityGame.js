@@ -66,6 +66,24 @@ function toInt32Buffer(v) {
 	return bn.toBuffer(v, 4);
 }
 
+function getDistributions(tileInfos) {
+	const totals = _.reduce(tileInfos,
+		(t, ti) => {
+			const balances = [...ti.resources, ti.funds];
+			return _.map(_.zip(balances, t), ([a, b]) => bn.add(a, b));
+		},
+		_.times(NUM_RESOURCES+1, i => '0')
+	);
+	return _.map(tileInfos,
+		ti => {
+			const balances = [...ti.resources, ti.funds];
+			return bn.div(
+				bn.sum(_.map(_.zip(balances, totals),
+					([a, b]) => bn.div(a, b))), balances.length);
+		}
+	);
+}
+
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	async function describeTileAt(x, y) {
@@ -602,32 +620,53 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		// Drain any shared funds they received from all the buying.
 		for (let n of neighbors)
 			await this.game.__drainTileAt(n.x, n.y);
-		// Advance time and collect from the center tile.
 		await this.game.__advanceTime(ONE_DAY);
+		// Advance time and collect from the center tile.
 		await this.game.collect(x, y, {from: centerOwner});
 		// Now see how much each neighbor got.
 		const neighborInfos = await Promise.all(
 			_.map(neighbors, n => describeTileAt(n.x, n.y)));
-		const totalShared = _.reduce(neighborInfos,
-			(t, ni) => {
-				t.resources = _.map(
-					_.zip(t.resources, ni.resources), ([a, b]) => bn.add(a, b));
-				t.funds = bn.add(t.funds, ni.funds);
-				return t;
-			},
-			{funds: '0', resources: _.times(NUM_RESOURCES, i => '0')});
-		const avgShared = _.mapValues(totalShared,
-			v => {
-				if (_.isArray(v))
-					return _.map(v, v => bn.idiv(v, neighbors.length));
-				return bn.idiv(v, neighbors.length);
-			});
-		// Since all neighbors are empty, they should have all received the average.
-		for (let ni of neighborInfos) {
-			for (let res = 0; res < NUM_RESOURCES; res++)
-				assert.equal(ni.resources[res], avgShared.resources[res]);
-			assert.equal(ni.funds, avgShared.funds);
+		const dists = getDistributions(neighborInfos);
+		// Since all neighbors are of equal height, there should only be one
+		// unique value in the distributions list.
+		assert.equal(_.uniq(dists).length, 1);
+	});
+
+	it('tallest neighbor gets the largest share', async function() {
+		const centerOwner = this.genesisOwner;
+		const neighbors = _.map(
+			_.zip(_.sampleSize(this.users, NUM_NEIGHBORS), NEIGHBOR_OFFSETS),
+			([player, [nx, ny]]) => ({player: player, x: nx, y: ny}));
+		const tallest = _.sample(neighbors);
+		const [x, y] = [0, 0];
+		// Build one of each block in the center tile.
+		await buildTower(x, y, BLOCKS, centerOwner);
+		// Advance time.
+		await this.game.__advanceTime(ONE_DAY);
+		// Buy up all the tiles around it.
+		await Promise.all(_.map(neighbors, n => buyTile(n.x, n.y, n.player)));
+		for (let n of neighbors) {
+			// Drain any shared funds this neighbor received from all the buying.
+			await this.game.__drainTileAt(n.x, n.y);
+			// Build a tower.
+			const height = n === tallest ? MAX_HEIGHT : _.random(1, MAX_HEIGHT-1);
+			const blocks = _.times(height, i => _.sample(BLOCKS));
+			await buildTower(n.x, n.y, blocks, n.player);
 		}
+		// Collect from the center tile.
+		await this.game.collect(x, y, {from: centerOwner});
+		// Now see how much each neighbor got.
+		const neighborInfos = await Promise.all(
+			_.map(neighbors, n => describeTileAt(n.x, n.y)));
+		const dists = getDistributions(neighborInfos);
+		// The neighbor with the largest share should also be the tallest.
+		const [largest] = _.reduce(_.zip(neighbors, dists),
+			([largestNeighbor, largestDist], [n, d]) => {
+				if (!largestNeighbor || bn.gt(d, largestDist))
+					return [n, d];
+				return [largestNeighbor, largestDist];
+			}, [null, '0']);
+		assert.strictEqual(largest, tallest);
 	});
 
 });

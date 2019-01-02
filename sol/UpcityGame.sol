@@ -522,6 +522,7 @@ contract UpcityGame is
 	/// @param y Y coordinate of tile.
 	function __drainTileAt(int32 x, int32 y) external {
 		Tile storage tile = _getExistingTileAt(x, y);
+		tile.lastTouchTime = $(BLOCKTIME);
 		tile.sharedFunds = 0;
 		// #for RES in range(NUM_RESOURCES)
 		tile.sharedResources[$(RES)] = 0;
