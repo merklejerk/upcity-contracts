@@ -19,10 +19,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		this.contract = this.contracts['UpcityResourceToken'];
 	});
 
-	beforeEach(async function() {
+	before(async function() {
 		await this.contract.new(
 			TOKEN_NAME, TOKEN_SYMBOL, RESERVE);
 		await this.contract.init([this.authority]);
+	});
+
+	beforeEach(async function() {
+		this.snapshotId = await this.saveSnapshot();
+	});
+
+	afterEach(async function() {
+		await this.restoreSnapshot(this.snapshotId);
 	});
 
 	it('Can get the token name', async function() {

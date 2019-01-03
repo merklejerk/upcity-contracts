@@ -161,7 +161,8 @@ contract UpcityGame is
 				bytes16 blocks,
 				uint256 price,
 				uint256[NUM_RESOURCES] memory resources,
-				uint256 funds) {
+				uint256 funds,
+				bool inSeason) {
 
 		Tile storage tile = _getExistingTileAt(_x, _y);
 		id = tile.id;
@@ -177,6 +178,7 @@ contract UpcityGame is
 			resources[$(RES)].add(_toTaxed(tile.sharedResources[$(RES)]));
 		// #done
 		funds = _toTaxed(tile.sharedFunds);
+		inSeason = _isTileInSeason(tile);
 	}
 
 	function collect(int32 x, int32 y)
@@ -469,34 +471,15 @@ contract UpcityGame is
 		return prices;
 	}
 
-	// #if !TEST
-
 	/// @dev Check if a tile is in season (has a bonus in effect).
 	/// @param tile The tile to check.
 	/// @return true if tile is in season.
 	function _isTileInSeason(Tile storage tile) private view returns (bool) {
-		return uint128(tile.id) % NUM_WEEKS == _getCalendarWeek();
+		return uint128(tile.id) % NUM_SEASONS == _getSeason();
 	}
 
-	// #else
+	// #if TEST
 	// solhint-disable
-
-	/// @dev Whether seasons are disabled.
-	bool public __disableSeasons;
-
-	/// @dev Check if a tile is in season (has a bonus in effect).
-	/// @param tile The tile to check.
-	/// @return true if tile is in season or seasons are disabled.
-	function _isTileInSeason(Tile storage tile) private view returns (bool) {
-		if (__disableSeasons)
-			return false;
-		return uint128(tile.id) % NUM_WEEKS == _getCalendarWeek();
-	}
-
-	/// @dev Test function to toggle seasons.
-	function __toggleSeasons(bool enabled) public {
-		__disableSeasons = !enabled;
-	}
 
 	/// @dev Test function to add shared funds and resources to a tile.
 	/// Any ether paid to this function will be added to the shared funds

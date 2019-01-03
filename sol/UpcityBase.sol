@@ -1,10 +1,9 @@
 pragma solidity ^0.5;
 
-// #def NUM_WEEKS 52
-
-// #def ONE_WEEK 365.25 / NUM_WEEKS
-
 // #def ONE_DAY 24 * 60 * 60
+
+// #def SEASON_DURATION \
+//		uint64((365.25 * ONE_DAY) / NUM_SEASONS / SEASON_FREQUENCY)
 
 // #def ONE_TOKEN 10**DECIMALS
 
@@ -80,8 +79,8 @@ contract UpcityBase {
 	uint64 internal constant TAX_RATE = $$(TO_PPM(1/NUM_NEIGHBORS));
 	uint256 internal constant MINIMUM_TILE_PRICE = $$(int(ONE_TOKEN * MINIMUM_TILE_PRICE));
 	uint64 internal constant PURCHASE_MARKUP = $$(TO_PPM(1+PURCHASE_MARKUP));
-	uint64 internal constant NUM_WEEKS = $$(NUM_WEEKS);
-	uint64 internal constant ONE_WEEK = $$(uint64(ONE_DAY * ONE_WEEK));
+	uint64 internal constant NUM_SEASONS = $$(NUM_SEASONS);
+	uint64 internal constant SEASON_DURATION = $$(SEASON_DURATION);
 	uint64 internal constant CALENDAR_START = $$(uint64(CALENDAR_START));
 	uint64 internal constant SEASON_PRICE_BONUS = $$(TO_PPM(1+SEASON_PRICE_BONUS));
 	uint64 internal constant SEASON_YIELD_BONUS = $$(TO_PPM(1+SEASON_YIELD_BONUS));
@@ -133,8 +132,8 @@ contract UpcityBase {
 		return bytes16((uint128(a) & ~mask) | (v & mask));
 	}
 
-	function _getCalendarWeek() internal view returns (uint64) {
-		return ((uint64(block.timestamp) - CALENDAR_START) / ONE_WEEK) % NUM_WEEKS;
+	function _getSeason() internal view returns (uint128) {
+		return (($(BLOCKTIME) - CALENDAR_START) / SEASON_DURATION) % NUM_SEASONS;
 	}
 
 	/// @dev Estimate the sqrt of an integer n, returned in ppm, using small

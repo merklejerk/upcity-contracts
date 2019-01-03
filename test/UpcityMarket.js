@@ -20,7 +20,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		this.market = this.contracts['UpcityMarket'];
 	});
 
-	beforeEach(async function() {
+	before(async function() {
 		await this.market.new(CONNECTOR_WEIGHT);
 		this.tokens = [];
 		for (let i = 0; i < NUM_TOKENS; i++) {
@@ -33,6 +33,14 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.init(
 			_.map(this.tokens, t => t.address),
 			{value: MARKET_DEPOSIT});
+	});
+
+	beforeEach(async function() {
+		this.snapshotId = await this.saveSnapshot();
+	});
+
+	afterEach(async function() {
+		await this.restoreSnapshot(this.snapshotId);
 	});
 
 	it('Cannot get the price of an unknown token', async function() {
