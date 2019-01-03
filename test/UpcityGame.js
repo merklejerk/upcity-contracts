@@ -26,7 +26,7 @@ const NUM_NEIGHBORS = NEIGHBOR_OFFSETS.length;
 const ONE_DAY = 24 * 60 * 60;
 const SEASON_DURATION = Math.floor((365.25 * ONE_DAY) / NUM_SEASONS / SEASON_FREQUENCY);
 const CONTRACTS = [
-	'UpcityResourceToken', 'UpcityMarket', 'UpcityGame', 'GasGuzzler'
+	'UpcityResourceToken', 'UpcityMarket', 'UpcityGame'
 ];
 
 function decodeBlocks(encoded) {
@@ -81,9 +81,9 @@ function getDistributions(tileInfos) {
 	return _.map(tileInfos,
 		ti => {
 			const balances = [...ti.resources, ti.funds];
-			return bn.div(
+			return bn.dp(bn.div(
 				bn.sum(_.map(_.zip(balances, totals),
-					([a, b]) => bn.div(a, b))), balances.length);
+					([a, b]) => bn.div(a, b))), balances.length), 2);
 		}
 	);
 }
