@@ -14,6 +14,7 @@
 		"clean": "node src/clean"
 	},
 	"devDependencies": {
+		"bip39": "^2.5.0",
 		"bn-str-256": "^1.9.1",
 		"ethereumjs-util": "^6.0.0",
 		"flex-contract": "^1.6.1",
