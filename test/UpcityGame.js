@@ -665,6 +665,21 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await assert.rejects(this.game.collect(x, y), ERRORS.NOT_FOUND);
 		});
 
+		it('collect mints tokens', async function() {
+			const owner = this.genesisPlayer;
+			const [caller] = _.sampleSize(this.users, 1);
+			const funds = 100;
+			const [x, y] = [0, 0];
+			// Build one of each block.
+			await buildTower(x, y, BLOCKS, owner);
+			const oldSupply = await Promise.all(_.map(this.tokens, t => t.totalSupply()));
+			await this.game.__advanceTime(ONE_DAY);
+			const tx = await this.game.collect(x, y, {from: caller});
+			const newSupply = await Promise.all(_.map(this.tokens, t => t.totalSupply()));
+			for (let res of BLOCKS)
+				assert(bn.gt(newSupply[res], oldSupply[res]));
+		});
+
 		it('collect credits tile owner, not caller', async function() {
 			const owner = this.genesisPlayer;
 			const [caller] = _.sampleSize(this.users, 1);
