@@ -112,14 +112,10 @@ module.exports = async function(opts={}) {
 	const eth = new FlexEther({provider: provider, gasBonus: 0.75});
 	provider.setMaxListeners(4096);
 	provider.engine.setMaxListeners(4096);
-	const artifacts = await Promise.all(
-		_.map(opts.contracts || [], n => project.getArtifact(n)));
-	const contractOpts = {
-		eth: eth,
-	};
-	const contracts = _.zipObject(opts.contracts || [],
-		_.times(artifacts.length,
-			i => new FlexContract(artifacts[i], contractOpts)));
+	const artifacts = await (opts.contracts ?
+		project.getArtifacts(opts.contracts) : project.getAllArtifacts());
+	const contracts = _.mapValues(artifacts,
+		a => new FlexContract(a, {eth: eth}));
 	return {
 		provider: provider,
 		saveSnapshot: () => saveSnapshot(provider),

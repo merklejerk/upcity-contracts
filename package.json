@@ -8,9 +8,9 @@
 	"license": "Apache-2.0",
 	"private": false,
 	"scripts": {
-		"build": "node src/build",
-		"test": "TARGET=test node src/build && mocha --timeout 30000 test/*.js",
-		"deploy": "TARGET=release node src/build && node src/deploy",
+		"build": "node src/build release",
+		"test": "node src/build test && mocha --timeout 30000 test/*.js",
+		"deploy": "node src/build release && node src/deploy",
 		"clean": "node src/clean"
 	},
 	"devDependencies": {

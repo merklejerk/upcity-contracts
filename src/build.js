@@ -8,10 +8,6 @@ const project = require('./project');
 const util = require('./util');
 const solpp = require('solpp');
 
-const ARGS = minimist(process.argv.slice(2),
-	{boolean: ['force'], alias: {'force': ['f']}, string: ['target']});
-const FORCE = !!ARGS.force;
-
 async function generateSourceUnits(config) {
 	const files = await util.glob(config.units, project.SOL_ROOT);
 	const promises = [];
@@ -94,22 +90,14 @@ async function writeArtifacts(contracts) {
 			JSON.stringify(v, null, '\t'))));
 }
 
-async function loadConfig() {
-	const config = require(project.BUILD_CONFIG_PATH);
-	let target = ARGS['target'] || process.env['TARGET'];
-	if (!target) {
-		for (let name in config) {
-			if (config[name].default)
-				target = name;
-		}
-	}
-	if (!target || !(target in config))
-		throw new Error(`Build target "${target}" not found in build configuration.`);
-	const subConfig = config[target];
+async function loadConfig(target) {
+	const root = require(project.BUILD_CONFIG_PATH);
+	if (!(target in root))
+		throw new Error(`Build target "${target}" not found in build configuration`);
+	const cfg = _.cloneDeep(root[target]);
 	// Resolve all config paths.
-	subConfig.units = _.map(subConfig.units,
-		f => path.resolve(project.SOL_ROOT, f));
-	return subConfig;
+	cfg.units = _.map(cfg.units, f => path.resolve(project.SOL_ROOT, f));
+	return cfg;
 }
 
 async function loadCache() {
@@ -138,26 +126,48 @@ async function wipeGeneratedSource(config) {
 	await util.wipeExcept(project.BUILD_SOL_ROOT, except);
 }
 
-(async function() {
-	try {
-		const config = await loadConfig();
-		let cached = await loadCache();
-		const inHash = await computeInHash(config);
-		let units = [];
-		if (FORCE || !cached || cached.inHash != inHash) {
-			cached = null;
-			await wipeGeneratedSource(config);
-			units = await generateSourceUnits(config);
+function loadProgramArguments() {
+	const args = minimist(process.argv.slice(2), {
+		boolean: ['force'],
+		alias: {
+			'force': ['f']
 		}
-		const outHash = await util.getTreeHash(project.BUILD_SOL_ROOT);
-		if (FORCE || !cached || cached.outHash != outHash) {
-			await util.wipe(project.BUILD_OUTPUT_ROOT);
-			const contracts = await compileAll(config);
-			await writeArtifacts(contracts);
-		}
-		await writeCache({inHash: inHash, outHash: outHash});
-	} catch (err) {
-		console.error(err);
-		process.exitCode = -1;
+	});
+	args.target = args._[0];
+	if (_.isNil(args.target))
+		throw new Error('Deployment target must be specified with --target flag');
+	return args;
+}
+
+async function main() {
+	const args = loadProgramArguments();
+	if (_.isNil(args.target))
+		throw new Error('Build target must be specified with --target flag');
+	const cfg = await loadConfig(args.target);
+	let cached = await loadCache();
+	const inHash = await computeInHash(cfg);
+	let units = [];
+	if (args.force || !cached || cached.inHash != inHash) {
+		cached = null;
+		await wipeGeneratedSource(cfg);
+		units = await generateSourceUnits(cfg);
 	}
-})();
+	const outHash = await util.getTreeHash(project.BUILD_SOL_ROOT);
+	if (args.force || !cached || cached.outHash != outHash) {
+		await util.wipe(project.BUILD_OUTPUT_ROOT);
+		const contracts = await compileAll(cfg);
+		await writeArtifacts(contracts);
+	}
+	await writeCache({inHash: inHash, outHash: outHash});
+}
+
+if (require.main === module) {
+	(async () => {
+		try {
+			await main();
+		} catch (err) {
+			console.error(err);
+			process.exitCode = -1;
+		}
+	})();
+}

@@ -1,3 +1,4 @@
+'use strict'
 const _ = require('lodash');
 const fse = require('fs-extra');
 const project = require('./project');

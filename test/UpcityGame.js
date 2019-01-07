@@ -25,9 +25,6 @@ const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
 const NUM_NEIGHBORS = NEIGHBOR_OFFSETS.length;
 const ONE_DAY = 24 * 60 * 60;
 const SEASON_DURATION = Math.floor((365.25 * ONE_DAY) / NUM_SEASONS / SEASON_FREQUENCY);
-const CONTRACTS = [
-	'UpcityResourceToken', 'UpcityMarket', 'UpcityGame'
-];
 
 function decodeBlocks(encoded) {
 	const hex = bn.toHex(encoded, MAX_HEIGHT*2).substr(2);
@@ -124,8 +121,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	}
 
 	before(async function() {
-		_.assign(this, await testbed({
-			contracts: CONTRACTS}));
+		_.assign(this, await testbed());
 		this.authority = this.accounts[0];
 		this.genesisPlayer = this.accounts[1];
 		this.users = _.slice(this.accounts, 2);
@@ -642,12 +638,13 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const [x, y] = [0, 0];
 			// Build one of each block in the center tile.
 			await buildTower(x, y, BLOCKS, centerOwner);
+			// Advance time.
+			await this.game.__advanceTime(ONE_DAY);
 			// Buy up all the tiles around it.
 			await Promise.all(_.map(neighbors, n => buyTile(n.x, n.y, n.player)));
 			// Drain any shared funds they received from all the buying.
 			for (let n of neighbors)
 				await this.game.__drainTileAt(n.x, n.y);
-			await this.game.__advanceTime(ONE_DAY);
 			// Advance time and collect from the center tile.
 			await this.game.collect(x, y, {from: centerOwner});
 			// Now see how much each neighbor got.

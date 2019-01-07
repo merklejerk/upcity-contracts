@@ -15,7 +15,6 @@ module.exports = {
 	},
 	"release": {
 		units: SOURCE_UNITS,
-		default: true,
 		defs: CONSTANTS,
 		optimizer: 200
 	}

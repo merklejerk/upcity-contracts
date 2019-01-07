@@ -1,3 +1,4 @@
+'use strict'
 const _ = require('lodash');
 const fs = require('mz/fs');
 const fse = require('fs-extra');
@@ -39,7 +40,7 @@ async function getTreeHash(root, opts={}) {
 
 async function getTreeFiles(root, opts={}) {
 	const recursed = !!opts.files;
-	files = opts.files || {};
+	const files = opts.files || {};
 	const contents = await fs.readdir(root)
 	for (let f of contents) {
 		const p = path.resolve(root, f);

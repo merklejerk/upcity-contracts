@@ -249,6 +249,7 @@ contract UpcityGame is
 
 		assert(tile.id != 0x0);
 		require($(BLOCKTIME) >= tile.lastTouchTime, ERROR_TIME_TRAVEL);
+		uint64 seasonBonus = _isTileInSeason(tile) ? SEASON_YIELD_BONUS : PPM_ONE;
 		uint64 dt = $(BLOCKTIME) - tile.lastTouchTime;
 		// Geneerate resources on top of what's been shared to this tile.
 		uint256[NUM_RESOURCES] memory produced = tile.sharedResources;
@@ -259,15 +260,9 @@ contract UpcityGame is
 			uint256 amt = ONE_TOKEN * _blockStats[b].production;
 			amt *= dt;
 			amt *= BLOCK_HEIGHT_BONUS[height];
-			amt /= _blockStats[b].score;
-			amt /= ONE_DAY * PPM_ONE**2;
+			amt *= seasonBonus;
+			amt /= (_blockStats[b].score) * $$(ONE_DAY * PPM_ONE**3);
 			produced[b] = produced[b].add(amt);
-		}
-		// If the tile is in season, it has a yield bonus.
-		if (_isTileInSeason(tile)) {
-			// #for RES in range(NUM_RESOURCES)
-			produced[$(RES)] = produced[$(RES)].mul(SEASON_YIELD_BONUS) / PPM_ONE;
-			// #done
 		}
 		return produced;
 	}
