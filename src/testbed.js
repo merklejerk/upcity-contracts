@@ -17,7 +17,7 @@ const ONE_TOKEN = bn.parse('1e18');
 const MAX_UINT = bn.sub(bn.pow(2, 256), 1);
 const ZERO_ADDRESS = '0x' + _.repeat('0', 40);
 
-function createAccounts(accounts, balance=bn.mul(100, ONE_TOKEN)) {
+function createAccounts(accounts, balance=bn.mul(1e6, ONE_TOKEN)) {
 	if (_.isArray(accounts)) {
 		return _.map(accounts, acct => {
 			if (_.isString(acct)) {

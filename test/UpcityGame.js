@@ -14,13 +14,13 @@ const {
 	RUBITE_BLOCK,
 	MAX_HEIGHT,
 	NUM_RESOURCES,
- 	NUM_SEASONS,
+	NUM_SEASONS,
 	SEASON_FREQUENCY } = constants;
+const CONNECTOR_WEIGHT = 0.66;
 const BLOCKS = [ONITE_BLOCK, TOPITE_BLOCK, RUBITE_BLOCK];
 const BLOCK_NAMES = ['Onite', 'Topite', 'Rubite'];
-const RESERVE = ONE_TOKEN;
+const RESERVE = bn.mul(ONE_TOKEN, 1e3);
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
-const CONNECTOR_WEIGHT = Math.round(1e6 * constants.CONNECTOR_WEIGHT);
 const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
 const NUM_NEIGHBORS = NEIGHBOR_OFFSETS.length;
 const ONE_DAY = 24 * 60 * 60;
@@ -85,16 +85,45 @@ function getDistributions(tileInfos) {
 	);
 }
 
+function getTokenPurchaseCost(amount, supply, funds) {
+	let c = bn.div(bn.add(supply, amount), supply)
+	c = bn.pow(c, 1/CONNECTOR_WEIGHT);
+	c = bn.sub(c, 1);
+	c = bn.mul(c, funds);
+	return bn.round(c);
+}
+
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	async function describeTileAt(x, y) {
 		return unpackDescription(await this.game.describeTileAt(x, y));
 	}
 
-	async function grantTokens(whom, tokens) {
+	async function buyTokens(whom, tokens, bonus=0.001) {
 		assert(_.isArray(tokens) && tokens.length == NUM_RESOURCES);
-		for (let res = 0; res < tokens.length; res++)
-			await this.tokens[res].mint(whom, tokens[res]);
+		for (let res = 0; res < tokens.length; res++) {
+			const amount = tokens[res];
+			const token = this.tokens[res].address;
+			const {price, supply, funds} = await this.market.getState(token);
+			// Need to pay a little more to ensure we get enough.
+			const cost = bn.int(
+				bn.mul(getTokenPurchaseCost(amount, supply, funds), (1+bonus)));
+			const tx = await this.market.buy(
+				token,
+				whom,
+				{from: whom, value: cost}
+			);
+			const {bought} = tx.findEvent('Bought').args;
+			// Sell any excess.
+			if (bn.gt(bought, amount)) {
+				await this.market.sell(
+					token,
+					bn.sub(bought, amount),
+					whom,
+					{from: whom}
+				);
+			}
+		}
 	}
 
 	function toTileId(x, y) {
@@ -110,7 +139,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		if (!caller)
 			caller = (await describeTileAt(x, y)).owner;
 		let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
-		await grantTokens(caller, cost);
+		await buyTokens(caller, cost);
 		return this.game.buildBlocks(x, y, encodeBlocks(blocks),
 			{from: caller});
 	}
@@ -128,12 +157,12 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		this.market = this.contracts['UpcityMarket'];
 		this.game = this.contracts['UpcityGame'];
 		describeTileAt = _.bind(describeTileAt, this);
-		grantTokens = _.bind(grantTokens, this);
+		buyTokens = _.bind(buyTokens, this);
 		toTileId = _.bind(toTileId, this);
 		buildTower = _.bind(buildTower, this);
 		buyTile = _.bind(buyTile, this);
 
-		await this.market.new(CONNECTOR_WEIGHT);
+		await this.market.new(Math.round(1e6 * CONNECTOR_WEIGHT));
 		const tx = await this.game.new();
 		this.tokens = [];
 		for (let name of BLOCK_NAMES) {
@@ -202,6 +231,30 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				await this.game.__advanceTime(dt);
 			}
 			assert.equal(timesInSeason, SEASON_FREQUENCY);
+		});
+	});
+
+	describe('game', function() {
+		it('block stats are zero initially', async function() {
+			const {count, production} = await this.game.getBlockStats();
+			const zeroes = _.times(NUM_RESOURCES, i => '0');
+			assert.deepEqual(count, zeroes);
+			assert.deepEqual(production, zeroes);
+		});
+
+		it('block stats increase with building a tower', async function() {
+			const player = this.genesisPlayer;
+			const [x, y] = [0, 0];
+			const numBlocks = _.random(1, MAX_HEIGHT);
+			const blocks = _.times(numBlocks, i => _.sample(BLOCKS));
+			await buildTower(x, y, blocks, player);
+			const {count, production} = await this.game.getBlockStats();
+			for (let res = 0; res < NUM_RESOURCES; res++) {
+				if (_.includes(blocks, res)) {
+					assert(bn.gt(count[res], 0));
+					assert(bn.gt(production[res], 0));
+				}
+			}
 		});
 	});
 
@@ -326,14 +379,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			assert(bn.gt(await this.game.payments(prevOwner), ownerBalance));
 		});
 
-		it('buying a tile increases its price', async function() {
-			const [buyer] = _.sampleSize(this.users, 1);
-			const {price} = await describeTileAt(0, 0);
-			await this.game.buyTile(0, 0, {from: buyer, value: price});
-			const {price: newPrice} = await describeTileAt(0, 0);
-			assert(bn.gt(newPrice, price));
-		});
-
 		it('buying an edge tile creates all its neighbors', async function() {
 			const [buyer] = _.sampleSize(this.users, 1);
 			const [x, y] = _.sample(NEIGHBOR_OFFSETS);
@@ -361,24 +406,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await buyTile(...tiles[1], buyer);
 			const fundsAfter = (await describeTileAt(...tiles[0])).funds;
 			assert(bn.gt(fundsAfter, fundsBefore));
-		});
-
-		it('buying a tile increases its neighbors\' price', async function() {
-			const [buyer] = _.sampleSize(this.users, 1);
-			const {price} = await describeTileAt(0, 0);
-			const oldNeighborPrices = _.map(
-				await Promise.all(_.map(NEIGHBOR_OFFSETS,
-					([ox, oy]) => describeTileAt(ox, oy))),
-				t => t.price);
-			await this.game.buyTile(0, 0, {from: buyer,value: price});
-			const newNeighborPrices = _.map(
-				await Promise.all(_.map(NEIGHBOR_OFFSETS,
-					([ox, oy]) => describeTileAt(ox, oy))),
-				t => t.price);
-			for (let [oldPrice, newPrice] of
-					_.zip(oldNeighborPrices, newNeighborPrices)) {
-				assert(bn.gt(newPrice, oldPrice));
-			}
 		});
 
 		it('buying a tile with > price credits payer difference', async function() {
@@ -422,6 +449,63 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const tx = await this.game.buyTile(x, y,
 				{from: buyer, value: tile.price});
 			assert(tx.findEvent('TileCollected', {id: toTileId(x, y)}));
+		});
+	});
+
+	describe('price', function() {
+		it('buying a tile increases its price', async function() {
+			const [buyer] = _.sampleSize(this.users, 1);
+			const {price} = await describeTileAt(0, 0);
+			await this.game.buyTile(0, 0, {from: buyer, value: price});
+			const {price: newPrice} = await describeTileAt(0, 0);
+			assert(bn.gt(newPrice, price));
+		});
+
+		it('building a block increases a tile\'s price', async function() {
+			const player = this.genesisPlayer;
+			const [x, y] = [0, 0];
+			const blocks = _.sampleSize(BLOCKS, 1);
+			const {price: oldPrice} = await describeTileAt(x, y);
+			const tx = await buildTower(x, y, blocks, player);
+			const {price: newPrice} = await describeTileAt(x, y);
+			assert(bn.gt(newPrice, oldPrice));
+		});
+
+		it('buying a tile increases its neighbors\' price', async function() {
+			const [buyer] = _.sampleSize(this.users, 1);
+			const [x, y] = [0, 0];
+			const oldNeighborPrices = _.map(
+				await Promise.all(_.map(NEIGHBOR_OFFSETS,
+					([ox, oy]) => describeTileAt(ox, oy))),
+				t => t.price);
+			await buyTile(x, y, buyer);
+			const newNeighborPrices = _.map(
+				await Promise.all(_.map(NEIGHBOR_OFFSETS,
+					([ox, oy]) => describeTileAt(ox, oy))),
+				t => t.price);
+			for (let [oldPrice, newPrice] of
+					_.zip(oldNeighborPrices, newNeighborPrices)) {
+				assert(bn.gt(newPrice, oldPrice));
+			}
+		});
+
+		it('building a block increases its neighbors\' price', async function() {
+			const player = this.genesisPlayer;
+			const [x, y] = [0, 0];
+			const oldNeighborPrices = _.map(
+				await Promise.all(_.map(NEIGHBOR_OFFSETS,
+					([ox, oy]) => describeTileAt(ox, oy))),
+				t => t.price);
+			const blocks = _.sampleSize(BLOCKS, 1);
+			const tx = await buildTower(x, y, blocks, player);
+			const newNeighborPrices = _.map(
+				await Promise.all(_.map(NEIGHBOR_OFFSETS,
+					([ox, oy]) => describeTileAt(ox, oy))),
+				t => t.price);
+			for (let [oldPrice, newPrice] of
+					_.zip(oldNeighborPrices, newNeighborPrices)) {
+				assert(bn.gt(newPrice, oldPrice));
+			}
 		});
 	});
 
@@ -477,7 +561,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			// Only the first three blocks should be built.
 			const encoded = '0xffffffffffffffffff020100ff020100'
 			const cost = await this.game.getBuildCost(x, y, encoded);
-			await grantTokens(player, cost);
+			await buyTokens(player, cost);
 			const tx = await this.game.buildBlocks(x, y,  encoded,
 				{from: player});
 			assert(tx.findEvent('Built'));
@@ -492,7 +576,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
 			// We need to allocate more resources for the next build since we can't
 			// get block costs on a complete tower.
-			await grantTokens(player, _.map(cost, c => bn.mul(c, 100)));
+			await buyTokens(player, _.map(cost, c => bn.mul(c, 100)));
 			await this.game.buildBlocks(x, y, encodeBlocks(blocks),
 				{from: player});
 			blocks = [_.sample(BLOCKS)];
@@ -509,7 +593,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
 			// We need to allocate more resources for the next build since we can't
 			// get block costs on a complete tower.
-			await grantTokens(player, _.map(cost, c => bn.mul(c, 100)));
+			await buyTokens(player, _.map(cost, c => bn.mul(c, 100)));
 			await this.game.buildBlocks(x, y, encodeBlocks(blocks),
 				{from: player});
 			blocks = _.times(MAX_HEIGHT - blocks.length + 1, i => _.sample(BLOCKS));
@@ -531,7 +615,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const [x, y] = [0, 0];
 			const blocks = _.times(_.random(1, MAX_HEIGHT), i => _.sample(BLOCKS));
 			const cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
-			await grantTokens(player, _.map(cost, c => bn.max(bn.sub(c, 1), 0)));
+			await buyTokens(player, _.map(cost, c => bn.max(bn.sub(c, 1), 0)));
 			await assert.rejects(this.game.buildBlocks(x, y, blocks, {from: player}),
 				ERRORS.INSUFFICIENT);
 		});

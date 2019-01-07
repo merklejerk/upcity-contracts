@@ -9,7 +9,7 @@ const ERRORS = require('./lib/errors.js');
 const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
 const RESERVE = ONE_TOKEN;
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
-const CONNECTOR_WEIGHT = Math.round(1e6 * constants.CONNECTOR_WEIGHT);
+const CONNECTOR_WEIGHT = 0.66;
 const NUM_TOKENS = constants.NUM_RESOURCES;
 
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
@@ -21,7 +21,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	});
 
 	before(async function() {
-		await this.market.new(CONNECTOR_WEIGHT);
+		await this.market.new(Math.round(1e6 * CONNECTOR_WEIGHT));
 		this.tokens = [];
 		for (let i = 0; i < NUM_TOKENS; i++) {
 			const token = this.contracts['UpcityResourceToken'].clone();
@@ -48,9 +48,19 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.rejects(this.market.getPrice(token), ERRORS.INVALID);
 	});
 
+	it('Cannot get the market state of an unknown token', async function() {
+		const token = testbed.randomAddress();
+		assert.rejects(this.market.getState(token), ERRORS.INVALID);
+	});
+
 	it('Can get the price of a token', async function() {
 		const token = _.sample(this.tokens).address;
 		assert(bn.gt(await this.market.getPrice(token), 0));
+	});
+
+	it('Can get the market state of a token', async function() {
+		const token = _.sample(this.tokens).address;
+		assert(await this.market.getState(token));
 	});
 
 	it('Cannot buy unknown token', async function() {
@@ -141,6 +151,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			event.args.bought);
 	});
 
+	it('Buying tokens increases supply', async function() {
+		const [buyer] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		const oldSupply = await token.totalSupply();
+		const payment = bn.mul(ONE_TOKEN, 0.1);
+		const tx = await this.market.buy(
+			token.address, buyer, {value: payment, from: buyer});
+		const {bought} = tx.findEvent('Bought').args;
+		const newSupply = await token.totalSupply();
+		assert.equal(newSupply, bn.add(oldSupply, bought));
+	});
+
 	it('Can sell all tokens', async function() {
 		const [seller] = _.sampleSize(this.users, 1);
 		const token = _.sample(this.tokens);
@@ -195,5 +217,20 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await token.balanceOf(seller),
 			bn.sub(balance, amount));
 		assert(bn.gt(await this.eth.getBalance(dst), initialEthBalance));
+	});
+
+	it('Selling tokens decreases supply', async function() {
+		const [seller] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		const balance = bn.mul(ONE_TOKEN, 1);
+		const amount = bn.mul(balance, 0.1);
+		await token.mint(seller, balance);
+		const oldSupply = await token.totalSupply();
+		const tx = await this.market.sell(
+			token.address, amount, seller,
+			{from: seller});
+		const {sold} = tx.findEvent('Sold').args;
+		const newSupply = await token.totalSupply();
+		assert.equal(newSupply, bn.sub(oldSupply, sold));
 	});
 });

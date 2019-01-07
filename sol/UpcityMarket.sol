@@ -77,22 +77,35 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 		isInitialized = true;
 	}
 
+	/// @dev Get the market state of a token.
+	/// @param resource Address of the resource token contract.
+	/// @return The price, supply, and (ether) balance for that token.
+	function getState(address resource)
+			external view returns (uint256 price, uint256 supply, uint256 funds) {
+
+		Market storage market = _markets[resource];
+		require(address(market.token) == resource, ERROR_INVALID);
+		price = getPrice(resource);
+		supply = market.token.totalSupply();
+		funds = market.funds;
+	}
+
 	/// @dev Get the current price of a resource.
 	/// @param resource The address of the resource contract.
 	/// @return The price, in wei.
 	function getPrice(address resource) public view returns (uint256) {
 		Market storage market = _markets[resource];
 		require(address(market.token) == resource, ERROR_INVALID);
-		return (((1 ether) * market.funds) /
-			(market.token.totalSupply() * connectorWeight)) / PPM_ONE;
+		return ((1 ether) * market.funds) /
+			((market.token.totalSupply() * connectorWeight) / PPM_ONE);
 	}
 
 	/// @dev Buy some tokens with ether.
-	/// @param resource The address of the resource contract.
+	/// @param resource The address of the resource token contract.
 	/// @param to Recipient of tokens.
 	/// @return The number of tokens purchased.
 	function buy(address resource, address to)
-			public payable onlyInitialized returns (uint256) {
+			external payable onlyInitialized returns (uint256) {
 
 		Market storage market = _markets[resource];
 		require(address(market.token) == resource, ERROR_INVALID);
@@ -107,12 +120,12 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 	}
 
 	/// @dev Sell some tokens for ether.
-	/// @param resource The address of the resource contract.
+	/// @param resource The address of the resource token contract.
 	/// @param amount Amount of tokens to sell.
 	/// @param to Recipient of ether.
 	/// @return The number of ether received.
 	function sell(address resource, uint256 amount, address payable to)
-			public onlyInitialized returns (uint256) {
+			external onlyInitialized returns (uint256) {
 
 		Market storage market = _markets[resource];
 		require(address(market.token) == resource, ERROR_INVALID);
@@ -128,7 +141,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 	}
 
 	// #if TEST
-	function __uninitialize() public {
+	// solhint-disable
+	function __uninitialize() external {
 		tokens.length = 0;
 		if (address(this).balance > 0) {
 			address payable nobody = address(0x0);

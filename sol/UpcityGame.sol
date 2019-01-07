@@ -69,6 +69,60 @@ contract UpcityGame is
 		isInitialized = true;
 	}
 
+	function getBlockStats()
+			external view returns (
+				uint64[NUM_RESOURCES] memory count,
+				uint256[NUM_RESOURCES] memory production) {
+
+		// #for RES in range(NUM_RESOURCES)
+		count[$$(RES)] = _blockStats[$$(RES)].count;
+		production[$$(RES)] =
+			(_blockStats[$$(RES)].production * ONE_TOKEN) / PPM_ONE;
+		// #done
+	}
+
+	function getPlayerBalance(address player)
+			external view returns (
+				uint256 funds,
+				uint256[NUM_RESOURCES] memory resources) {
+
+		funds = player.balance;
+		// #for RES in range(NUM_RESOURCES)
+		resources[$$(RES)] = _tokens[$$(RES)].balanceOf(player);
+		// #done
+	}
+
+	function describeTileAt(int32 _x, int32 _y) external view
+			returns (
+				bytes16 id,
+				int32 x,
+				int32 y,
+				uint32 timesBought,
+				uint64 lastTouchTime,
+				address owner,
+				bytes16 blocks,
+				uint256 price,
+				uint256[NUM_RESOURCES] memory resources,
+				uint256 funds,
+				bool inSeason) {
+
+		Tile storage tile = _getExistingTileAt(_x, _y);
+		id = tile.id;
+		x = tile.x;
+		y = tile.y;
+		timesBought = tile.timesBought; owner = tile.owner;
+		lastTouchTime = tile.lastTouchTime;
+		blocks = tile.blocks;
+		price = _getTilePrice(tile);
+		resources = _getTileYield(tile);
+		// #for RES in range(NUM_RESOURCES)
+		resources[$(RES)] =
+			resources[$(RES)].add(_toTaxed(tile.sharedResources[$(RES)]));
+		// #done
+		funds = _toTaxed(tile.sharedFunds);
+		inSeason = _isTileInSeason(tile);
+	}
+
 	function buyTile(int32 x, int32 y)
 			external payable onlyInitialized returns (bool) {
 
@@ -137,48 +191,6 @@ contract UpcityGame is
 			_transferTo(to, amount);
 			emit PaymentCollected(msg.sender, to, amount);
 		}
-	}
-
-	function getPlayerBalance(address player)
-			external view returns (
-				uint256 funds,
-				uint256[NUM_RESOURCES] memory resources) {
-
-		funds = player.balance;
-		// #for RES in range(NUM_RESOURCES)
-		resources[$$(RES)] = _tokens[$$(RES)].balanceOf(player);
-		// #done
-	}
-
-	function describeTileAt(int32 _x, int32 _y) external view
-			returns (
-				bytes16 id,
-				int32 x,
-				int32 y,
-				uint32 timesBought,
-				uint64 lastTouchTime,
-				address owner,
-				bytes16 blocks,
-				uint256 price,
-				uint256[NUM_RESOURCES] memory resources,
-				uint256 funds,
-				bool inSeason) {
-
-		Tile storage tile = _getExistingTileAt(_x, _y);
-		id = tile.id;
-		x = tile.x;
-		y = tile.y;
-		timesBought = tile.timesBought; owner = tile.owner;
-		lastTouchTime = tile.lastTouchTime;
-		blocks = tile.blocks;
-		price = _getTilePrice(tile);
-		resources = _getTileYield(tile);
-		// #for RES in range(NUM_RESOURCES)
-		resources[$(RES)] =
-			resources[$(RES)].add(_toTaxed(tile.sharedResources[$(RES)]));
-		// #done
-		funds = _toTaxed(tile.sharedFunds);
-		inSeason = _isTileInSeason(tile);
 	}
 
 	function collect(int32 x, int32 y)
@@ -410,7 +422,7 @@ contract UpcityGame is
 			uint256[NUM_RESOURCES] memory bc =
 				_getBlockCost(b, _blockStats[b].count, h);
 			// #for RES in range(NUM_RESOURCES)
-			price.add(marketPrices[$(RES)].mul(bc[$(RES)]) / ONE_TOKEN);
+			price = price.add(marketPrices[$(RES)].mul(bc[$(RES)]) / ONE_TOKEN);
 			// #done
 		}
 		return price;
@@ -463,7 +475,6 @@ contract UpcityGame is
 		// #for RES in range(NUM_RESOURCES)
 		prices[$(RES)] = _market.getPrice(address(_tokens[$(RES)]));
 		// #done
-		return prices;
 	}
 
 	/// @dev Check if a tile is in season (has a bonus in effect).
