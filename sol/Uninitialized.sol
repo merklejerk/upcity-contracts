@@ -2,31 +2,37 @@ pragma solidity ^0.5;
 
 import './Errors.sol';
 
-/// @dev Base for contracts that require a separate
+/// @title Base for contracts that require a separate
 /// initialization step beyond the constructor.
-/// Deriving contracts should set isInitialized to true once they've
-/// completed their initialization step.
+/// @author Lawrence Forman (me@merklejerk.com)
+/// @dev Deriving contracts should call super._init() in their initialization step
+/// to initialize the contract.
 contract Uninitialized is Errors {
 
 	/// @dev Whether the contract is fully initialized.
-	bool public isInitialized = false;
+	bool private _isInitialized;
 
 	/// @dev Only callable when contract is initialized.
 	modifier onlyInitialized() {
-		require(isInitialized, ERROR_UNINITIALIZED);
+		require(_isInitialized, ERROR_UNINITIALIZED);
 		_;
 	}
 
 	/// @dev Only callable when contract is uninitialized.
 	modifier onlyUninitialized() {
-		require(!isInitialized, ERROR_UNINITIALIZED);
+		require(!_isInitialized, ERROR_UNINITIALIZED);
 		_;
+	}
+
+	/// @dev initialize the contract.
+	function _init() internal onlyUninitialized {
+		_isInitialized = true;
 	}
 
 	// #if TEST
 	/// @dev Debug function for toggling intialized state.
 	function __setInitialized(bool initialized) external {
-		isInitialized = initialized;
+		_isInitialized = initialized;
 	}
 	// #endif
 }

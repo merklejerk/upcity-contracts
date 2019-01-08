@@ -16,14 +16,6 @@ contract UpcityGame is
 		Restricted {
 	using SafeMath for uint256;
 
-	/// @dev Global block stats for each resource.
-	BlockStats[NUM_RESOURCES] private _blockStats;
-	/// @dev Tokens for each resource.
-	IResourceToken[NUM_RESOURCES] private _tokens;
-	/// @dev The market for all resources.
-	IMarket private _market;
-	/// @dev Tiles by ID.
-	mapping(bytes16=>Tile) private _tiles;
 	/// @dev Payments to individual players when someone buys their tile.
 	/// Can be pulled vial collectPayment().
 	mapping(address=>uint256) public payments;
@@ -31,10 +23,18 @@ contract UpcityGame is
 	/// These are funds that have been shared to unowned tiles as well as
 	/// funds paid to buy unowned tiles.
 	/// An authority may call collectFees() to withdraw these fees.
-	uint256 public feesCollected = 0;
+	uint256 public fees = 0;
+	// Global block stats for each resource.
+	BlockStats[NUM_RESOURCES] private _blockStats;
+	// Tokens for each resource.
+	IResourceToken[NUM_RESOURCES] private _tokens;
+	// The market for all resources.
+	IMarket private _market;
+	// Tiles by ID.
+	mapping(bytes16=>Tile) private _tiles;
 
 	event Bought(bytes16 indexed id, address from, address to, uint256 price);
-	event TileCollected(bytes16 indexed id, address owner);
+	event Collected(bytes16 indexed id, address owner);
 	event PaymentCollected(address indexed owner, address to, uint256 amount);
 	event Built(bytes16 indexed id, bytes16 blocks);
 	event Credited(address indexed to, uint256 amount);
@@ -42,9 +42,18 @@ contract UpcityGame is
 
 	/// @dev Doesn't really do anything.
 	/// init() needs to be called by the creator before this contract
-	/// can be interacted with.
+	/// can be interacted with. All transactional functions will revert if
+	/// init() has not been called first.
 	constructor() public { /* NOOP */ }
 
+	/// @dev Initialize this contract.
+	/// All transactional functions will revert if this has not been called
+	/// first by the the contract creator. This cannot be called twice.
+	/// @param tokens Each resource's UpcityResourceToken addresses.
+	/// @param market The UpcityMarket address.
+	/// @param authorities Array of addresses allowed to collect fees.
+	/// @param authorities Array of addresses allowed to call collectFees().
+	/// @param genesisOwner The owner of the genesis tile, at <0,0>.
 	function init(
 			address[NUM_RESOURCES] calldata tokens,
 			address market,
@@ -65,10 +74,13 @@ contract UpcityGame is
 		tile.timesBought = 1;
 		tile.basePrice = (MINIMUM_TILE_PRICE * PURCHASE_MARKUP) / PPM_ONE;
 		_createNeighbors(tile.x, tile.y);
-
-		isInitialized = true;
+		_init();
 	}
 
+	/// @dev Get global stats for every resource type.
+	/// @return A tuple of:
+	/// array of the total number of blocks for each resource,
+	/// array of the daily production limit for each resource.
 	function getBlockStats()
 			external view returns (
 				uint64[NUM_RESOURCES] memory count,
@@ -81,6 +93,12 @@ contract UpcityGame is
 		// #done
 	}
 
+	/// @dev Gets the resource and ether balance of a player.
+	/// Note that this does not include credits (see 'payments' field).
+	/// @param player The player's address.
+	/// @return A tuple of:
+	/// ether balance,
+	/// array of balance for each resource.
 	function getPlayerBalance(address player)
 			external view returns (
 				uint256 funds,
@@ -92,24 +110,37 @@ contract UpcityGame is
 		// #done
 	}
 
-	function describeTileAt(int32 _x, int32 _y) external view
+	/// @dev Get detailed information about a tile.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @return A tuple of details.
+	function describeTile(int32 x, int32 y) external view
 			returns (
+				/// @dev The id of the tile.
 				bytes16 id,
-				int32 x,
-				int32 y,
+				/// @dev The number of times the tile was bought.
 				uint32 timesBought,
+				/// @dev The number of times the tile was bought (0 of unowned).
 				uint64 lastTouchTime,
+				/// @dev The current owner of the tile (0x0 if unowned).
 				address owner,
+				// Right-aligned, packed representation of blocks,
+				// where 0x..FF is empty.
 				bytes16 blocks,
+				/// @dev The current price of the tile.
 				uint256 price,
+				/// @dev The number of each resource available to collect()
+				/// (including tax).
 				uint256[NUM_RESOURCES] memory resources,
+				/// @dev The amount ether available to collect()
+				/// (including tax).
 				uint256 funds,
+				/// @dev Whether or not this tile is in season.
+				/// Tiles in season yield more resources and have higher prices.
 				bool inSeason) {
 
-		Tile storage tile = _getExistingTileAt(_x, _y);
+		Tile storage tile = _getExistingTileAt(x, y);
 		id = tile.id;
-		x = tile.x;
-		y = tile.y;
 		timesBought = tile.timesBought; owner = tile.owner;
 		lastTouchTime = tile.lastTouchTime;
 		blocks = tile.blocks;
@@ -123,8 +154,14 @@ contract UpcityGame is
 		inSeason = _isTileInSeason(tile);
 	}
 
+	/// @dev Buy a tile.
+	/// This will first do a collect(), so the previous owner will be paid
+	/// any resources/ether held by the tile. The buyer does not inherit
+	/// existing funds/resources. Only the tile and its tower.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
 	function buyTile(int32 x, int32 y)
-			external payable onlyInitialized returns (bool) {
+			external payable onlyInitialized {
 
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
@@ -145,11 +182,10 @@ contract UpcityGame is
 		if (msg.value > price)
 			_creditTo(msg.sender, msg.value - price);
 		emit Bought(tile.id, oldOwner, tile.owner, price);
-		return true;
 	}
 
 	function buildBlocks(int32 x, int32 y, bytes16 blocks)
-			external onlyInitialized returns (bool) {
+			external onlyInitialized {
 
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
@@ -169,16 +205,15 @@ contract UpcityGame is
 		}
 		_incrementBlockStats(blocks);
 		emit Built(tile.id, tile.blocks);
-		return true;
 	}
 
 	function collectFees(address to)
 			external onlyInitialized onlyAuthority {
 
-		assert(feesCollected <= address(this).balance);
-		if (feesCollected > 0) {
-			uint256 amount = feesCollected;
-			feesCollected = 0;
+		assert(fees <= address(this).balance);
+		if (fees > 0) {
+			uint256 amount = fees;
+			fees = 0;
 			_transferTo(to, amount);
 			emit FeesCollected(to, amount);
 		}
@@ -194,12 +229,12 @@ contract UpcityGame is
 	}
 
 	function collect(int32 x, int32 y)
-			public onlyInitialized returns (bool) {
+			public onlyInitialized {
 
 		Tile storage tile = _getExistingTileAt(x, y);
-		// If tile is unowned, it cannot yield anything.
+		// If tile is unowned, it cannot yield or hold anything.
 		if (tile.owner == ZERO_ADDRESS)
-			return false;
+			return;
 
 		uint256[NUM_RESOURCES] memory produced = _getTileYield(tile);
 		uint256 funds = tile.sharedFunds;
@@ -212,8 +247,7 @@ contract UpcityGame is
 		_share(tile, funds, produced);
 		// Pay/credit owner.
 		_claim(tile.owner, funds, produced);
-		emit TileCollected(tile.id, tile.owner);
-		return true;
+		emit Collected(tile.id, tile.owner);
 	}
 
 	function toTileId(int32 x, int32 y) public view returns (bytes16) {
@@ -302,6 +336,7 @@ contract UpcityGame is
 			tile.y = y;
 			tile.blocks = EMPTY_BLOCKS;
 			tile.neighborCloutsTotal = NUM_NEIGHBORS;
+			tile.basePrice = MINIMUM_TILE_PRICE;
 		}
 		return tile;
 	}
@@ -336,7 +371,7 @@ contract UpcityGame is
 			BlockStats storage bs = _blockStats[b];
 			bs.score += BLOCK_HEIGHT_BONUS[h];
 			bs.count += 1;
-			bs.production = 2 * uint256(_est_integer_sqrt(bs.count,
+			bs.production = 2 * uint256(_estIntegerSqrt(bs.count,
 				uint64(bs.production / 2)));
 		}
 	}
@@ -368,7 +403,7 @@ contract UpcityGame is
 				neighbor.sharedFunds = neighbor.sharedFunds.add(sharedFunds);
 			} else {
 				// If the tile is unowned, keep the funds as fees.
-				feesCollected = feesCollected.add(
+				fees = fees.add(
 					(clout * sharedFunds) / PPM_ONE);
 			}
 		}
@@ -441,7 +476,7 @@ contract UpcityGame is
 		if (amount > 0) {
 			// Payments to zero address are just fees collected.
 			if (recipient == ZERO_ADDRESS) {
-				feesCollected = feesCollected.add(amount);
+				fees = fees.add(amount);
 			} else {
 				// Just credit the player. She can collect it later through
 				// collectPayment().
@@ -475,13 +510,6 @@ contract UpcityGame is
 		// #for RES in range(NUM_RESOURCES)
 		prices[$(RES)] = _market.getPrice(address(_tokens[$(RES)]));
 		// #done
-	}
-
-	/// @dev Check if a tile is in season (has a bonus in effect).
-	/// @param tile The tile to check.
-	/// @return true if tile is in season.
-	function _isTileInSeason(Tile storage tile) private view returns (bool) {
-		return uint128(tile.id) % NUM_SEASONS == _getSeason();
 	}
 
 	// #if TEST
@@ -520,7 +548,7 @@ contract UpcityGame is
 
 	/// @dev Test function to add fees collected to the contract.
 	function __fundFees() external payable {
-		feesCollected = feesCollected.add(msg.value);
+		fees = fees.add(msg.value);
 	}
 
 	function __fundPlayer(address to) external payable {

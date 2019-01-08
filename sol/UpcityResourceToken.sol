@@ -5,14 +5,15 @@ import './Uninitialized.sol';
 import './Restricted.sol';
 import './Nonpayable.sol';
 
-/// @title ERC20 token contract for upcity resources (onite, topite, rubite).
+/// @title ERC20 token contract for upcity resources.
+/// @author Lawrence Forman (me@merklejerk.com)
 contract UpcityResourceToken is ERC20, Uninitialized, Restricted, Nonpayable {
 
 	using SafeMath for uint256;
 
 	string public name;
 	string public symbol;
-	uint8 public constant decimals = $(DECIMALS);
+	uint8 public constant decimals = 18;
 	address internal constant ZERO_ADDRESS = address(0x0);
 
 	/// @dev Creates the contract. The contract will still need to be
@@ -44,7 +45,7 @@ contract UpcityResourceToken is ERC20, Uninitialized, Restricted, Nonpayable {
 		require(_authorities.length > 0, ERROR_INVALID);
 		for (uint256 i = 0; i < _authorities.length; i++)
 			isAuthority[_authorities[i]] = true;
-		isInitialized = true;
+		Uninitialized._init();
 	}
 
 	/// @dev Mint new tokens and give them to an address.

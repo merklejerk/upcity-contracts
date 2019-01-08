@@ -2,11 +2,11 @@ pragma solidity ^0.5;
 
 import './Errors.sol';
 
-/// @dev Base class for contracts that want to restrict access to privileged
+/// @title Base class for contracts that want to restrict access to privileged
 /// functions to either the contract creator or a group of addresses.
-/// Derived contracts isAuthority to true for each address with privileged
-/// access to functions protected by the onlyAuthority modifier.
-/// Derived classes
+/// @author Lawrence Forman (me@merklejerk.com)
+/// @dev Derived contracts should set isAuthority to true for each address
+/// with privileged access to functions protected by the onlyAuthority modifier.
 contract Restricted is Errors {
 
 	/// @dev Creator of this contract.

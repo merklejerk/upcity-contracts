@@ -7,15 +7,20 @@ import './IResourceToken.sol';
 import './Uninitialized.sol';
 import './Restricted.sol';
 
-/// @title Bancor meta-market for UpCity's resources.
+/// @title Bancor market for UpCity's resources.
+/// @author Lawrence Forman (me@merklejerk.com)
 contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 
 	using SafeMath for uint256;
 
+	// 100% or 1.0 in parts per million.
 	uint32 private constant PPM_ONE = $$(1e6);
 
+	// State for each resource's market.
 	struct Market {
+		// The resource's token.
 		IResourceToken token;
+		// The ether balance for this resource.
 		uint256 funds;
 	}
 
@@ -23,14 +28,24 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 	address[] public tokens;
 	/// @dev Bancor connector weight shared by all markets, in ppm.
 	uint32 public connectorWeight;
-	/// @dev Indiividual markets for each resource.
+	// Indiividual markets for each resource.
 	mapping(address=>Market) private _markets;
 
+	/// @dev Raised whenever resource tokens are bought.
+	/// @param resource The address of the token/resource.
+	/// @param to The recepient of the tokens.
+	/// @param value The ether value of the tokens.
+	/// @param bought The number of tokens bought.
 	event Bought(
 		address indexed resource,
 		address indexed to,
 		uint256 value,
 		uint256 bought);
+	/// @dev Raised whenever resource tokens are sold.
+	/// @param resource The address of the token/resource.
+	/// @param to The recepient of the ether.
+	/// @param sold The number of tokens sold.
+	/// @param value The ether value of the tokens.
 	event Sold(
 		address indexed resource,
 		address indexed to,
@@ -74,7 +89,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 			require(market.token.isAuthority(address(this)));
 		}
 		_bancorInit();
-		isInitialized = true;
+		_init();
 	}
 
 	/// @dev Get the market state of a token.

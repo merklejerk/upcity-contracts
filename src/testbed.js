@@ -105,8 +105,8 @@ module.exports = async function(opts={}) {
 		allowUnlimitedContractSize: true,
 		locked: false,
 		unlocked_accounts: _.map(accounts, a => a.address),
-		// Why does this have to be so high?
-		gasLimit: 100e6
+		gasLimit: '0x5f5e100', // 100e6 (why does it have to be so high?)
+		gasPrice: '0x1'
 	};
 	const provider = ganache.provider(providerOpts);
 	const eth = new FlexEther({provider: provider, gasBonus: 0.75});

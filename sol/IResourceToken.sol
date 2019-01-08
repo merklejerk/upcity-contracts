@@ -1,6 +1,7 @@
 pragma solidity ^0.5;
 
-/// @dev Definition for a resource token used by upcity.
+/// @title Definition for a resource token used by upcity.
+/// @author Lawrence Forman (me@merklejerk.com)
 interface IResourceToken {
 	
 	function transfer(address to, uint256 amt) external returns (bool);
