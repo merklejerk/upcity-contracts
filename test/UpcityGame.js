@@ -160,7 +160,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		buyTile = _.bind(buyTile, this);
 
 		await this.market.new(Math.round(1e6 * CONNECTOR_WEIGHT));
-		console.log(this.game.bytecode.length/2);
 		const tx = await this.game.new();
 		this.tokens = [];
 		for (let name of BLOCK_NAMES) {
@@ -406,14 +405,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			assert(bn.gt(fundsAfter, fundsBefore));
 		});
 
-		it('buying a tile with > price credits payer difference', async function() {
+		it('buying a tile with > price refunds payer difference', async function() {
 			const [buyer] = _.sampleSize(this.users, 1);
 			const tile = await describeTile(0, 0);
 			const excess = '123';
 			const payment = bn.add(tile.price, excess);
-			const tx = await this.game.buyTile(0, 0, {from: buyer, value: payment});
-			const credit = await this.game.payments(buyer);
-			assert.equal(credit, excess);
+			const balanceBefore = await this.eth.getBalance(buyer);
+			const tx = await this.game.buyTile(0, 0,
+				{from: buyer, value: payment, gasPrice: 1});
+			const balanceAfter = await this.eth.getBalance(buyer);
+			const expectedBalance = bn.sub(balanceBefore,
+				bn.add(tx.gasUsed, tile.price));
+			assert.equal(balanceAfter, expectedBalance);
 		});
 
 		it('buying an unowned tile increases fees collected', async function() {

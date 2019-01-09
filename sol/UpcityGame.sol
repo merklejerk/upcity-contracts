@@ -155,6 +155,9 @@ contract UpcityGame is
 	}
 
 	/// @dev Buy a tile.
+	/// Ether equivalent to the price of the tile must be attached to this call.
+	/// Any excess ether (overpayment) will be transfered back to the caller.
+	/// The caller will be the new owner.
 	/// This will first do a collect(), so the previous owner will be paid
 	/// any resources/ether held by the tile. The buyer does not inherit
 	/// existing funds/resources. Only the tile and its tower.
@@ -180,20 +183,31 @@ contract UpcityGame is
 		_creditTo(oldOwner, _toTaxed(price));
 		// Refund any overpayment.
 		if (msg.value > price)
-			_creditTo(msg.sender, msg.value - price);
+			_transferTo(msg.sender, msg.value - price);
 		emit Bought(tile.id, oldOwner, tile.owner, price);
 	}
 
+	/// @dev Build, by appending, blocks on a tile.
+	/// This will first do a collect().
+	/// Empty blocks, or building beyond MAX_HEIGHT will revert.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @param blocks Right-aligned, packed representation of blocks to append.
 	function buildBlocks(int32 x, int32 y, bytes16 blocks)
 			external onlyInitialized {
 
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
+		// Must be owned by caller.
 		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
+		// Get the costs and count of the new blocks.
 		(uint256[NUM_RESOURCES] memory cost, uint8 count) =
 			_getBuildCostAndCount(x, y, blocks);
+		// Empty blocks aren't allowed.
 		require(count > 0, ERROR_INVALID);
+		// Building beyond the maximum height is not allowed.
 		require(_isValidHeight(tile.height + count), ERROR_MAX_HEIGHT);
+		// Burn the costs.
 		_burn(msg.sender, cost);
 		tile.blocks = _assignBlocks(tile.blocks, blocks, tile.height, count);
 		tile.height += count;
@@ -207,6 +221,9 @@ contract UpcityGame is
 		emit Built(tile.id, tile.blocks);
 	}
 
+	/// @dev Transfer fees (ether) collected to an address.
+	/// May only be called by an authority set in init().
+	/// @param to Recipient.
 	function collectFees(address to)
 			external onlyInitialized onlyAuthority {
 
@@ -219,6 +236,10 @@ contract UpcityGame is
 		}
 	}
 
+	/// @dev Collect funds (ether) credited to the caller.
+	/// Credits come from someone buying an owned tile, or when someone
+	/// other than the owner of a tile calls collect().
+	/// @param to Recipient.
 	function collectPayment(address to) external {
 		uint256 amount = payments[msg.sender];
 		if (amount > 0) {
