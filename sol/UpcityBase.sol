@@ -13,8 +13,6 @@ pragma solidity ^0.5;
 
 // #def ARRAY_SEP concat(",\n", __indent)
 
-// #def UNPACK_BLOCK(blocks, idx) uint8(uint128(blocks) >> (8*(idx)))
-
 // #def UINT256_ARRAY(count, value) \
 // 	map(filled(count, value), AS_UINT256)
 

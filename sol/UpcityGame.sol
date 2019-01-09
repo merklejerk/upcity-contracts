@@ -322,12 +322,14 @@ contract UpcityGame is
 
 		assert(tile.id != 0x0);
 		uint256[NUM_RESOURCES] memory cost = $$(UINT256_ARRAY(3, 0));
-		// The global block totals.
+		// The global block totals. We will increment this for each block to get
+		// the accurate/integrated cost.
 		uint64[NUM_RESOURCES] memory blockTotals =
 			$$(map(range(NUM_RESOURCES), (R) => `_blockStats[${R}].count`));
 		uint8 count = 0;
 		for (; count < MAX_HEIGHT; count++) {
-			uint8 b = $(UNPACK_BLOCK(blocks, count));
+			uint8 b = uint8(uint128(blocks));
+			blocks = blocks >> 8;
 			if (!_isValidBlock(b))
 				break;
 			require(_isValidHeight(tile.height + count + 1), ERROR_MAX_HEIGHT);
@@ -371,6 +373,11 @@ contract UpcityGame is
 		}
 	}
 
+	/// @dev Get the resource costs to build a block at a height.
+	/// @param _block The block ID number.
+	/// @param globalTotal The total number of the same block type in existence.
+	/// @param height The height of the block in the tower.
+	/// @return The amount of each resource it would take to build this block.
 	function _getBlockCost(uint8 _block, uint64 globalTotal, uint8 height)
 			private view returns (uint256[NUM_RESOURCES] memory) {
 
