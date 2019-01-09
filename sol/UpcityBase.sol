@@ -114,7 +114,7 @@ contract UpcityBase {
 	// The ratio of collected resources to share with neighbors, in ppm.
 	uint64 internal constant TAX_RATE = $$(TO_PPM(1/NUM_NEIGHBORS));
 	// The minimum tile price.
-	uint256 internal constant MINIMUM_TILE_PRICE = $$(int(ONE_TOKEN * MINIMUM_TILE_PRICE));
+	uint256 internal constant MINIMUM_TILE_PRICE = $$(uint256(ONE_TOKEN * MINIMUM_TILE_PRICE));
 	// How much to increase the base tile price every time it's bought, in ppm.
 	uint64 internal constant PURCHASE_MARKUP = $$(TO_PPM(1+PURCHASE_MARKUP));
 	// The number of seasons.

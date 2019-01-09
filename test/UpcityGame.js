@@ -207,13 +207,21 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				assert.equal(tile.owner, ZERO_ADDRESS);
 		});
 
+		it('tiles around genesis tile have a price >= MINIMUM_TILE_PRICE', async function() {
+			const tiles = await Promise.all(
+				_.map(NEIGHBOR_OFFSETS, n => describeTile(...n)));
+			const minPrice = bn.mul(constants.MINIMUM_TILE_PRICE, '1e18');
+			for (let tile of tiles)
+				assert(bn.gte(tile.price, minPrice));
+		});
+
 		it('genesis tile has a price', async function() {
 			const tile = await describeTile(0, 0);
 			assert(bn.gt(tile.price, 0));
 		});
 
-		it('cannot describe a tile that doesn\'t exist', async function() {
-			await assert.rejects(describeTile(100, 100), ERRORS.NOT_FOUND);
+		it('Describing non-existant tile has a zero id', async function() {
+			assert(bn.eq(await describeTile(100, 100).id, 0x0));
 		});
 
 		it(`genesis tile is in season ${SEASON_FREQUENCY} times a year`, async function() {
@@ -381,9 +389,9 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const [x, y] = _.sample(NEIGHBOR_OFFSETS);
 			const neighbors = _.map(NEIGHBOR_OFFSETS, ([ox, oy]) => [x+ox, y+oy]);
 			const tx = await buyTile(x, y, buyer);
-			const exists = await Promise.all(
-				_.map(neighbors, n => this.game.isTileAt(...n)));
-			assert(_.every(exists));
+			const tiles = await Promise.all(
+				_.map(neighbors, n => describeTile(...n)));
+			assert(_.every(_.map(tiles, t => bn.ne(t.id, '0x0'))));
 		});
 
 		it('buying an edge tile increases fees collected', async function() {

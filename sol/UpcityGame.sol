@@ -72,7 +72,6 @@ contract UpcityGame is
 		Tile storage tile = _createTileAt(0, 0);
 		tile.owner = genesisOwner;
 		tile.timesBought = 1;
-		tile.basePrice = (MINIMUM_TILE_PRICE * PURCHASE_MARKUP) / PPM_ONE;
 		_createNeighbors(tile.x, tile.y);
 		_init();
 	}
@@ -116,7 +115,8 @@ contract UpcityGame is
 	/// @return A tuple of details.
 	function describeTile(int32 x, int32 y) external view
 			returns (
-				/// @dev The id of the tile.
+				/// @dev The id of the tile. This will be 0x0 if the tile does not
+				/// exist.
 				bytes16 id,
 				/// @dev The number of times the tile was bought.
 				uint32 timesBought,
@@ -139,19 +139,25 @@ contract UpcityGame is
 				/// Tiles in season yield more resources and have higher prices.
 				bool inSeason) {
 
-		Tile storage tile = _getExistingTileAt(x, y);
+		Tile storage tile = _getTileAt(x, y);
 		id = tile.id;
-		timesBought = tile.timesBought; owner = tile.owner;
+		timesBought = tile.timesBought;
+		owner = tile.owner;
 		lastTouchTime = tile.lastTouchTime;
 		blocks = tile.blocks;
-		price = _getTilePrice(tile);
-		resources = _getTileYield(tile);
-		// #for RES in range(NUM_RESOURCES)
-		resources[$(RES)] =
-			resources[$(RES)].add(_toTaxed(tile.sharedResources[$(RES)]));
-		// #done
-		funds = _toTaxed(tile.sharedFunds);
-		inSeason = _isTileInSeason(tile);
+		if (id != 0x0) {
+			price = _getTilePrice(tile);
+			resources = _getTileYield(tile);
+			inSeason = _isTileInSeason(tile);
+			funds = _toTaxed(tile.sharedFunds);
+		}
+		else {
+			assert(owner == address(0x0));
+			price = 0;
+			resources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
+			inSeason = false;
+			funds = 0;
+		}
 	}
 
 	/// @dev Buy a tile.
@@ -163,9 +169,7 @@ contract UpcityGame is
 	/// existing funds/resources. Only the tile and its tower.
 	/// @param x The x position of the tile.
 	/// @param y The y position of the tile.
-	function buyTile(int32 x, int32 y)
-			external payable onlyInitialized {
-
+	function buyTile(int32 x, int32 y) external payable onlyInitialized {
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner != msg.sender, ERROR_ALREADY);
@@ -202,7 +206,7 @@ contract UpcityGame is
 		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
 		// Get the costs and count of the new blocks.
 		(uint256[NUM_RESOURCES] memory cost, uint8 count) =
-			_getBuildCostAndCount(x, y, blocks);
+			_getBuildCostAndCount(tile, blocks);
 		// Empty blocks aren't allowed.
 		require(count > 0, ERROR_INVALID);
 		// Building beyond the maximum height is not allowed.
@@ -217,16 +221,14 @@ contract UpcityGame is
 			Tile storage neighbor = _getTileAt(tile.x + ox, tile.y + oy);
 			neighbor.neighborCloutsTotal += count;
 		}
-		_incrementBlockStats(blocks);
+		_incrementBlockStats(blocks, count);
 		emit Built(tile.id, tile.blocks);
 	}
 
 	/// @dev Transfer fees (ether) collected to an address.
 	/// May only be called by an authority set in init().
 	/// @param to Recipient.
-	function collectFees(address to)
-			external onlyInitialized onlyAuthority {
-
+	function collectFees(address to) external onlyInitialized onlyAuthority {
 		assert(fees <= address(this).balance);
 		if (fees > 0) {
 			uint256 amount = fees;
@@ -238,7 +240,7 @@ contract UpcityGame is
 
 	/// @dev Collect funds (ether) credited to the caller.
 	/// Credits come from someone buying an owned tile, or when someone
-	/// other than the owner of a tile calls collect().
+	/// other than the owner of a tile (holding ether) calls collect().
 	/// @param to Recipient.
 	function collectPayment(address to) external {
 		uint256 amount = payments[msg.sender];
@@ -249,9 +251,23 @@ contract UpcityGame is
 		}
 	}
 
-	function collect(int32 x, int32 y)
-			public onlyInitialized {
-
+	/// @dev Collect the resources from a tile.
+	/// The caller need not be the owner of the tile.
+	/// Calling this on unowned tiles is a no-op since unowned tiles cannot hold
+	/// resources/funds.
+	/// If the tile is holding resources, they will be immediately minted to
+	/// the owner of the tile, with a portion (1/TAX_RATE) shared to its neighbors.
+	/// If the tile has funds (ether), they will be credited to the tile owner
+	/// (who can later redeem them via collectPayment()), and a portion
+	/// (1/TAX_RATE) will be shared to its neighbors.
+	/// If the caller is the owner, funds/ether will be directly transfered to the
+	/// owner, rather than merely credited (push rather than pull).
+	/// The exact proportion of resources and funds each neighbor receives will
+	/// depend on its tower height relative to the tile's other immediate
+	/// neighbors.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	function collect(int32 x, int32 y) public onlyInitialized {
 		Tile storage tile = _getExistingTileAt(x, y);
 		// If tile is unowned, it cannot yield or hold anything.
 		if (tile.owner == ZERO_ADDRESS)
@@ -271,26 +287,40 @@ contract UpcityGame is
 		emit Collected(tile.id, tile.owner);
 	}
 
+	/// @dev Convert a tile position to its ID.
+	/// The ID is deterministic, and depends on the instance of this contract.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @return A bytes16 unique ID of the tile.
 	function toTileId(int32 x, int32 y) public view returns (bytes16) {
 		return _toTileId(x, y);
 	}
 
-	function isTileAt(int32 x, int32 y) public view returns (bool) {
-		Tile storage tile = _getTileAt(x, y);
-		return tile.id != 0x0;
-	}
-
+	/// @dev Get the build cost (in resources) to build a sequence of blocks on
+	/// a tile.
+	/// This will revert if the number of blocks would exceed the height limit
+	/// or the tile does not exist.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @param blocks Right-aligned, packed representation of blocks to append.
 	function getBuildCost(int32 x, int32 y, bytes16 blocks)
-			public view returns (uint256[NUM_RESOURCES] memory) {
-
-		(uint256[NUM_RESOURCES] memory cost,) = _getBuildCostAndCount(x, y, blocks);
-		return cost;
-	}
-
-	function _getBuildCostAndCount(int32 x, int32 y, bytes16 blocks)
-			private view returns (uint256[NUM_RESOURCES] memory, uint8) {
+			public view returns (uint256[NUM_RESOURCES] memory cost) {
 
 		Tile storage tile = _getExistingTileAt(x, y);
+		(cost,) = _getBuildCostAndCount(tile, blocks);
+	}
+
+	/// @dev Get the build cost (in resources) to build a sequence of blocks on
+	/// a tile and the count of those blocks.
+	/// @param tile The tile info structure.
+	/// @param blocks Right-aligned, packed representation of blocks to append.
+	/// @return A tuple of:
+	/// The cost per-resource,
+	/// The count of the blocks passed.
+	function _getBuildCostAndCount(Tile storage tile, bytes16 blocks)
+			private view returns (uint256[NUM_RESOURCES] memory, uint8) {
+
+		assert(tile.id != 0x0);
 		uint256[NUM_RESOURCES] memory cost = $$(UINT256_ARRAY(3, 0));
 		// The global block totals.
 		uint64[NUM_RESOURCES] memory blockTotals =
@@ -311,19 +341,27 @@ contract UpcityGame is
 		return (cost, count);
 	}
 
+	/// @dev Get the amount resources held by a tile at the current time.
+	/// This will include shared resources from neighboring tiles.
+	/// The resources held by a tile is an aggregate of the production rate
+	/// of the blocks on it (multiplied by a seasonal bonus if the tile is in
+	/// season) plus resources shared from neighboring tiles.
+	/// @param tile The tile info structure.
+	/// @return The amount of each resource produced.
 	function _getTileYield(Tile storage tile)
-			private view returns (uint256[NUM_RESOURCES] memory) {
+			private view returns (uint256[NUM_RESOURCES] memory produced) {
 
 		assert(tile.id != 0x0);
 		require($(BLOCKTIME) >= tile.lastTouchTime, ERROR_TIME_TRAVEL);
 		uint64 seasonBonus = _isTileInSeason(tile) ? SEASON_YIELD_BONUS : PPM_ONE;
 		uint64 dt = $(BLOCKTIME) - tile.lastTouchTime;
 		// Geneerate resources on top of what's been shared to this tile.
-		uint256[NUM_RESOURCES] memory produced = tile.sharedResources;
-		for (uint8 height = 0; height < MAX_HEIGHT; height++) {
-			uint8 b = $(UNPACK_BLOCK(tile.blocks, height));
-			if (!_isValidBlock(b))
-				break;
+		produced = tile.sharedResources;
+		bytes16 blocks = tile.blocks;
+		for (uint8 height = 0; height < tile.height; height++) {
+			// Pop each block off the tower.
+			uint8 b = uint8(uint128(blocks));
+			blocks = blocks >> 8;
 			uint256 amt = ONE_TOKEN * _blockStats[b].production;
 			amt *= dt;
 			amt *= BLOCK_HEIGHT_BONUS[height];
@@ -331,7 +369,6 @@ contract UpcityGame is
 			amt /= (_blockStats[b].score) * $$(ONE_DAY * PPM_ONE**3);
 			produced[b] = produced[b].add(amt);
 		}
-		return produced;
 	}
 
 	function _getBlockCost(uint8 _block, uint64 globalTotal, uint8 height)
@@ -384,11 +421,11 @@ contract UpcityGame is
 		return tile;
 	}
 
-	function _incrementBlockStats(bytes16 blocks) private {
-		for (uint8 h = 0; h < MAX_HEIGHT; h++) {
-			uint8 b = $(UNPACK_BLOCK(blocks, h));
-			if (!_isValidBlock(b))
-				break;
+	function _incrementBlockStats(bytes16 blocks, uint8 count) private {
+		for (uint8 h = 0; h < count; h++) {
+			// Pop each block off the tower.
+			uint8 b = uint8(uint128(blocks));
+			blocks = blocks >> 8;
 			BlockStats storage bs = _blockStats[b];
 			bs.score += BLOCK_HEIGHT_BONUS[h];
 			bs.count += 1;
@@ -447,9 +484,11 @@ contract UpcityGame is
 			_transferTo(whom, _toTaxed(funds));
 	}
 
-	function _getTilePrice(Tile storage tile) private view returns (uint256) {
+	function _getTilePrice(Tile storage tile) private view
+			returns (uint256 price) {
+
 		uint256[NUM_RESOURCES] memory marketPrices = _getMarketPrices();
-		uint256 price = _getIsolatedTilePrice(tile, marketPrices);
+		price = _getIsolatedTilePrice(tile, marketPrices);
 		uint256 neighborPrices = 0;
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
@@ -458,7 +497,7 @@ contract UpcityGame is
 				neighborPrices = neighborPrices.add(
 					_getIsolatedTilePrice(neighbor, marketPrices));
 		}
-		price = price.add(neighborPrices) / NUM_NEIGHBORS;
+		price = price.add(neighborPrices / NUM_NEIGHBORS);
 		// If the tile is in season, it has a price bonus.
 		if (_isTileInSeason(tile))
 			price = price.mul(SEASON_PRICE_BONUS) / PPM_ONE;
@@ -471,10 +510,11 @@ contract UpcityGame is
 			private view returns (uint256) {
 
 		uint256 price = tile.basePrice;
-		for (uint8 h = 0; h < MAX_HEIGHT; h++) {
-			uint8 b = $(UNPACK_BLOCK(tile.blocks, h));
-			if (!_isValidBlock(b))
-				break;
+		bytes16 blocks = tile.blocks;
+		for (uint8 h = 0; h < tile.height; h++) {
+			// Pop each block off the tower.
+			uint8 b = uint8(uint128(blocks));
+			blocks = blocks >> 8;
 			uint256[NUM_RESOURCES] memory bc =
 				_getBlockCost(b, _blockStats[b].count, h);
 			// #for RES in range(NUM_RESOURCES)
