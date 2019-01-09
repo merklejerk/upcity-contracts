@@ -24,15 +24,17 @@ async function getDeployerKey(cfg) {
 		const phrase = m[1].trim().replace(/\s+/ /g);
 		const idx = cfg.accountIndex || 0;
 		const bip39Seed = bip39.mnemonicToSeedHex(phrase);
-		const path = `m/44'/0'/0/${idx}`;
-		const wallet = ethjs.hdkey.derivePath(path);
+		const _path = `m/44'/0'/0/${idx}`;
+		const wallet = ethjs.hdkey.derivePath(_path);
 		return ethjs.util.bufferToHex(wallet.getPrivateKey());
-	} else if (cfg.keyfile) {
-		// Private key is from a keyfile.
-		const pw = cfg.pasword.trim();
+	} else if (cfg.keystore) {
+		// Private key is from a keystore file.
+		const pw = cfg.pasword.trim(PROJECT.);
 		if (!pw)
-			throw new Error('No password provided for keyfile.');
-		const contents = await fs.readFile(cfg.keyfile);
+			throw new Error('No password provided for keystore.');
+		const _path = path.resolve(path.dirname(PROJECT.DEPLOY_CONFIG_PATH),
+			cfg.keystore);
+		const contents = await fs.readFile(_path);
 		const wallet = ethjs.wallet.fromV3(content, pw, true);
 		return ethjs.util.bufferToHex(wallet.getPrivateKey());
 	}
@@ -50,7 +52,7 @@ function loadProgramArguments() {
 		alias: {
 			'seed': ['s'],
 			'key': ['k'],
-			'keyfile': ['f'],
+			'keystore': ['f'],
 			'password': ['p'],
 			'gas': ['g'],
 			'account': ['a']
@@ -59,7 +61,7 @@ function loadProgramArguments() {
 		string: [
 			'seed',
 			'key',
-			'keyfile',
+			'keystore',
 			'password',
 			'provider',
 			'account',
@@ -74,7 +76,7 @@ function loadProgramArguments() {
 		target: args['target'],
 		seed: args['seed'],
 		key: args['key'],
-		keyFile: args['keyfile'],
+		keystore: args['keystore'],
 		password: args['password'],
 		gasPrice: args['gas'],
 		account: args['account'],
