@@ -17,8 +17,8 @@ contract UpcityGame is
 	using SafeMath for uint256;
 
 	/// @dev Payments to individual players when someone buys their tile.
-	/// Can be pulled vial collectPayment().
-	mapping(address=>uint256) public payments;
+	/// Can be pulled vial collectCredits().
+	mapping(address=>uint256) public credits;
 	/// @dev Fees collected.
 	/// These are funds that have been shared to unowned tiles as well as
 	/// funds paid to buy unowned tiles.
@@ -33,12 +33,19 @@ contract UpcityGame is
 	// Tiles by ID.
 	mapping(bytes16=>Tile) private _tiles;
 
-	event Bought(bytes16 indexed id, address from, address to, uint256 price);
-	event Collected(bytes16 indexed id, address owner);
-	event PaymentCollected(address indexed owner, address to, uint256 amount);
-	event Built(bytes16 indexed id, bytes16 blocks);
+	/// @dev Raised whenever a tile is bought.
+	event Bought(bytes16 indexed id, address indexed from, address indexed to, uint256 price);
+	/// @dev Raised whenever a tile's resources/funds are collected.
+	event Collected(bytes16 indexed id, address indexed owner);
+	/// @dev Raised whenever credited funds (ether) are collected.
+	event CreditsCollected(address indexed from, address indexed to, uint256 amount);
+	/// @dev Raised whenever a block is built on a tile.
+	event Built(bytes16 indexed id, address indexed owner, bytes16 blocks);
+	/// @dev Raised whenever a player is credited some funds to be collected via
+	/// collectCredits().
 	event Credited(address indexed to, uint256 amount);
-	event FeesCollected(address to, uint256 amount);
+	/// @dev Raised whenever amn authority claims fees through collectFees().
+	event FeesCollected(address indexed to, uint256 amount);
 
 	/// @dev Doesn't really do anything.
 	/// init() needs to be called by the creator before this contract
@@ -93,7 +100,7 @@ contract UpcityGame is
 	}
 
 	/// @dev Gets the resource and ether balance of a player.
-	/// Note that this does not include credits (see 'payments' field).
+	/// Note that this does not include credits (see 'credits' field).
 	/// @param player The player's address.
 	/// @return A tuple of:
 	/// ether balance,
@@ -222,7 +229,7 @@ contract UpcityGame is
 			neighbor.neighborCloutsTotal += count;
 		}
 		_incrementBlockStats(blocks, count);
-		emit Built(tile.id, tile.blocks);
+		emit Built(tile.id, tile.owner, tile.blocks);
 	}
 
 	/// @dev Transfer fees (ether) collected to an address.
@@ -242,12 +249,12 @@ contract UpcityGame is
 	/// Credits come from someone buying an owned tile, or when someone
 	/// other than the owner of a tile (holding ether) calls collect().
 	/// @param to Recipient.
-	function collectPayment(address to) external {
-		uint256 amount = payments[msg.sender];
+	function collectCredits(address to) external {
+		uint256 amount = credits[msg.sender];
 		if (amount > 0) {
-			payments[msg.sender] = 0;
+			credits[msg.sender] = 0;
 			_transferTo(to, amount);
-			emit PaymentCollected(msg.sender, to, amount);
+			emit CreditsCollected(msg.sender, to, amount);
 		}
 	}
 
@@ -258,7 +265,7 @@ contract UpcityGame is
 	/// If the tile is holding resources, they will be immediately minted to
 	/// the owner of the tile, with a portion (1/TAX_RATE) shared to its neighbors.
 	/// If the tile has funds (ether), they will be credited to the tile owner
-	/// (who can later redeem them via collectPayment()), and a portion
+	/// (who can later redeem them via collectCredits()), and a portion
 	/// (1/TAX_RATE) will be shared to its neighbors.
 	/// If the caller is the owner, funds/ether will be directly transfered to the
 	/// owner, rather than merely credited (push rather than pull).
@@ -282,8 +289,13 @@ contract UpcityGame is
 
 		// Share to neighbors.
 		_share(tile, funds, produced);
-		// Pay/credit owner.
-		_claim(tile.owner, funds, produced);
+	/// @dev Claims funds and resources from a tile to its owner.
+	/// The amount minted/transfered/credited will be minus the tax.
+	/// Resources are immediately minted to the tile owner.
+	/// Funds (ether) are credited (pull pattern) to the tile owner unless
+	/// the caller is also the tile owner, in which case it will be transfered
+	/// immediately.
+		_claim(tile, funds, produced);
 		emit Collected(tile.id, tile.owner);
 	}
 
@@ -392,6 +404,11 @@ contract UpcityGame is
 		return cost;
 	}
 
+	/// @dev Create a tile at a position.
+	/// This will initalize the id, price, blocks, and neighbor clouts.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @return The created Tile (storage) instance.
 	function _createTileAt(int32 x, int32 y) private returns (Tile storage) {
 		bytes16 id = _toTileId(x, y);
 		Tile storage tile = _tiles[id];
@@ -400,12 +417,18 @@ contract UpcityGame is
 			tile.x = x;
 			tile.y = y;
 			tile.blocks = EMPTY_BLOCKS;
+			// No need to iterate over neighbors to get accurate clouts since we know
+			// tiles are only created when an unowned edge tile is bought, so its
+			// only existing neighbor should be empty.
 			tile.neighborCloutsTotal = NUM_NEIGHBORS;
 			tile.basePrice = MINIMUM_TILE_PRICE;
 		}
 		return tile;
 	}
 
+	/// @dev Create neighbors for a tile at a position.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
 	function _createNeighbors(int32 x, int32 y) private {
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
@@ -413,12 +436,21 @@ contract UpcityGame is
 		}
 	}
 
+	/// @dev Get the Tile storage object at a position.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @return The tile storage object at that position.
 	function _getTileAt(int32 x, int32 y)
 			private view returns (Tile storage) {
 
 		return _tiles[_toTileId(x, y)];
 	}
 
+	/// @dev Get the Tile storage object at a position.
+	/// Reverts if it does not exist.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @return The tile storage object at that position.
 	function _getExistingTileAt(int32 x, int32 y)
 			private view returns (Tile storage) {
 
@@ -428,6 +460,10 @@ contract UpcityGame is
 		return tile;
 	}
 
+	/// @dev Increment the global block stats for all blocks passed.
+	/// This will adjust the total counts, production rates, and total scores.
+	/// @param blocks Right-aligned, packed representation of blocks to append.
+	/// @param count The number of blocks packed in 'blocks'.
 	function _incrementBlockStats(bytes16 blocks, uint8 count) private {
 		for (uint8 h = 0; h < count; h++) {
 			// Pop each block off the tower.
@@ -441,6 +477,17 @@ contract UpcityGame is
 		}
 	}
 
+	/// @dev Share funds and resources from a tile to its immediate neighbors.
+	/// The total amount distributed to all neighbors is defined by the TAX_RATE.
+	/// The amount each neighbor actually receives depends on its relative
+	/// 'clout', which is the height of its tower against all combined heights
+	/// of all the towers of the tile's neighbors, so the tallest tower will
+	/// receive the largest share.
+	/// If a neighbor is unowned, its share of resources are discarded, but the
+	/// funds are added to the 'fees' collected by this contract.
+	/// @param tile The tile object sharing its funds/resources.
+	/// @param funds The (untaxed) funds to share.
+	/// @param resources The (untaxed) resources to share.
 	function _share(
 			Tile storage tile,
 			uint256 funds,
@@ -474,28 +521,43 @@ contract UpcityGame is
 		}
 	}
 
+	/// @dev Claims funds and resources from a tile to its owner.
+	/// The amount minted/transfered/credited will be minus the tax.
+	/// Resources are immediately minted to the tile owner.
+	/// Funds (ether) are credited (pull pattern) to the tile owner unless
+	/// the caller is also the tile owner, in which case it will be transfered
+	/// immediately.
+	/// @param tile The tile object.
+	/// @param funds The funds (ether) held by the tile.
+	/// @param resources The resources held by the tile.
 	function _claim(
-			address whom,
+			Tile storage tile,
 			uint256 funds,
 			uint256[NUM_RESOURCES] memory resources)
 			private {
 
-		require(whom != ZERO_ADDRESS, ERROR_INVALID);
+		require(tile.owner != ZERO_ADDRESS, ERROR_INVALID);
 		// #for RES in range(NUM_RESOURCES)
-		_mintTo(whom, $$(RES), _toTaxed(resources[$$(RES)]));
+		_mintTo(tile.owner, $$(RES), _toTaxed(resources[$$(RES)]));
 		// #done
-		// If caller is not recipient, only credit funds.
-		if (whom != msg.sender)
-			_creditTo(whom, _toTaxed(funds));
+		// If caller is not the owner, only credit funds.
+		if (tile.owner != msg.sender)
+			_creditTo(tile.owner, _toTaxed(funds));
 		else // Otherwise try to transfer the funds synchronously.
-			_transferTo(whom, _toTaxed(funds));
+			_transferTo(tile.owner, _toTaxed(funds));
 	}
 
+	/// @dev Get the full price for a tile.
+	/// This is the isolated tile price plus seasonal bonuses,
+	/// and neighborhood bonus.
+	/// @param tile The tile object.
+	/// @return The ether price, in wei.
 	function _getTilePrice(Tile storage tile) private view
 			returns (uint256 price) {
 
 		uint256[NUM_RESOURCES] memory marketPrices = _getMarketPrices();
 		price = _getIsolatedTilePrice(tile, marketPrices);
+		/// Get the aggregate of neighbor prices.
 		uint256 neighborPrices = 0;
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
@@ -504,13 +566,17 @@ contract UpcityGame is
 				neighborPrices = neighborPrices.add(
 					_getIsolatedTilePrice(neighbor, marketPrices));
 		}
+		// Add the average of the neighbor prices.
 		price = price.add(neighborPrices / NUM_NEIGHBORS);
 		// If the tile is in season, it has a price bonus.
 		if (_isTileInSeason(tile))
 			price = price.mul(SEASON_PRICE_BONUS) / PPM_ONE;
-		return price;
 	}
 
+	/// @dev Get the isolated price for a tile.
+	/// This is a sum of the base price for a tile (which increases
+	/// with every purchase of the tile) and the materials costs of each block
+	/// built on the tile at current market prices.
 	function _getIsolatedTilePrice(
 			Tile storage tile,
 			uint256[NUM_RESOURCES] memory marketPrices)
@@ -531,29 +597,50 @@ contract UpcityGame is
 		return price;
 	}
 
+	/// @dev Do a direct transfer of ether to someone.
+	/// This is like address.transfer() but with some key differences:
+	/// The transfer will forward all remaining gas to the recipient and
+	/// will revert with an ERROR_TRANSFER_FAILED on failure.
+	/// Transfers to the zero address (0x0), will simply add to the fees
+	/// collected.
+	/// @param to Recipient address.
+	/// @param amount Amount of ether (in wei) to transfer.
 	function _transferTo(address to, uint256 amount) private {
-		// Use fallback function and forward all remaining gas.
 		if (amount > 0) {
+			if (to == ZERO_ADDRESS) {
+				fees = fees.add(amount);
+				return;
+			}
+			// Use fallback function and forward all remaining gas.
 			//solhint-disable-next-line
 			(bool success,) = to.call.value(amount)("");
 			require(success, ERROR_TRANSFER_FAILED);
 		}
 	}
 
-	function _creditTo(address recipient, uint256 amount) private {
+	/// @dev Credit someone some ether to be pulled via collectCredits() later.
+	/// Transfers to the zero address (0x0), will simply add to the fees
+	/// collected.
+	/// @param to Recipient address.
+	/// @param amount Amount of ether (in wei) to transfer.
+	function _creditTo(address to, uint256 amount) private {
 		if (amount > 0) {
 			// Payments to zero address are just fees collected.
-			if (recipient == ZERO_ADDRESS) {
+			if (to == ZERO_ADDRESS) {
 				fees = fees.add(amount);
-			} else {
-				// Just credit the player. She can collect it later through
-				// collectPayment().
-				payments[recipient] = payments[recipient].add(amount);
+				return;
 			}
-			emit Credited(recipient, amount);
+			// Just credit the player. She can collect it later through
+			// collectCredits().
+			credits[to] = credits[to].add(amount);
+			emit Credited(to, amount);
 		}
 	}
 
+	/// @dev Mint some resource tokens to someone.
+	/// @param recipient The recipient.
+	/// @param resource The resource ID number.
+	/// @param amount The amount of tokens to mint (in wei).
 	function _mintTo(
 			address recipient, uint8 resource, uint256 amount) private {
 
@@ -561,17 +648,22 @@ contract UpcityGame is
 			_tokens[resource].mint(recipient, amount);
 	}
 
+	/// @dev Burn some resource tokens from someone.
+	/// @param spender The owner of the tokens.
+	/// @param resources Amount of each resource to burn.
 	function _burn(
-			address owner,
+			address spender,
 			uint256[NUM_RESOURCES] memory resources) private {
 
-		assert(owner != ZERO_ADDRESS);
+		assert(spender != ZERO_ADDRESS);
 		// #for N in range(NUM_RESOURCES)
 		if (resources[$(N)] > 0)
-			_tokens[$(N)].burn(owner, resources[$(N)]);
+			_tokens[$(N)].burn(spender, resources[$(N)]);
 		// #done
 	}
 
+	/// @dev Get the current market price of each resource token.
+	/// @return The ether market price of each token, in wei.
 	function _getMarketPrices() private view
 			returns (uint256[NUM_RESOURCES] memory prices) {
 
@@ -620,7 +712,7 @@ contract UpcityGame is
 	}
 
 	function __fundPlayer(address to) external payable {
-		payments[to] = payments[to].add(msg.value);
+		credits[to] = credits[to].add(msg.value);
 	}
 
 	// solhint-enable
