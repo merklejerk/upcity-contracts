@@ -135,14 +135,12 @@ function loadProgramArguments() {
 	});
 	args.target = args._[0];
 	if (_.isNil(args.target))
-		throw new Error('Deployment target must be specified with --target flag');
+		throw new Error('Deployment target must be given');
 	return args;
 }
 
 async function main() {
 	const args = loadProgramArguments();
-	if (_.isNil(args.target))
-		throw new Error('Build target must be specified with --target flag');
 	const cfg = await loadConfig(args.target);
 	let cached = await loadCache();
 	const inHash = await computeInHash(cfg);

@@ -12,32 +12,37 @@ const ethjs = {
 };
 const FlexEther = require('flex-ether');
 const FlexContract = require('flex-contract');
-const PROJECT = require('./project');
+const minimist = require('minimist');
+const project = require('./project');
 
 async function getDeployerKey(cfg) {
 	if (cfg.key) {
 		// Private key is explicitly given.
 		return ethjs.util.addHexPrefix(cfg.key);
-	} else if (cfg.seed) {
+	} else if (cfg.mnemonic) {
 		// Private key is from a BIP39 seed phrase.
-		const m = /\/^\s*(.+)\s*$/.exec(cfg.seed);
-		const phrase = m[1].trim().replace(/\s+/ /g);
-		const idx = cfg.accountIndex || 0;
-		const bip39Seed = bip39.mnemonicToSeedHex(phrase);
-		const _path = `m/44'/0'/0/${idx}`;
-		const wallet = ethjs.hdkey.derivePath(_path);
-		return ethjs.util.bufferToHex(wallet.getPrivateKey());
+		return mnemonicToKey(cfg.mnemonic, cfg.accountIndex);
 	} else if (cfg.keystore) {
 		// Private key is from a keystore file.
-		const pw = cfg.pasword.trim(PROJECT.);
+		const pw = cfg.pasword.trim();
 		if (!pw)
 			throw new Error('No password provided for keystore.');
-		const _path = path.resolve(path.dirname(PROJECT.DEPLOY_CONFIG_PATH),
+		const _path = path.resolve(path.dirname(project.DEPLOY_CONFIG_PATH),
 			cfg.keystore);
 		const contents = await fs.readFile(_path);
 		const wallet = ethjs.wallet.fromV3(content, pw, true);
 		return ethjs.util.bufferToHex(wallet.getPrivateKey());
 	}
+}
+
+function mnemonicToKey(mnemonic, idx=0) {
+	const m = /^\s*(.+)\s*$/.exec(mnemonic);
+	const phrase = m[1].trim().replace(/\s+/g, ' ');
+	idx = idx || 0;
+	const seed = bip39.mnemonicToSeedHex(phrase);
+	const _path = `m/44'/0'/0/${idx}`;
+	const wallet = ethjs.hdkey.fromMasterSeed(seed).derivePath(_path).getWallet();
+	return ethjs.util.bufferToHex(wallet.getPrivateKey());
 }
 
 async function loadConfig(target) {
@@ -50,16 +55,16 @@ async function loadConfig(target) {
 function loadProgramArguments() {
 	const args = minimist(process.argv.slice(2), {
 		alias: {
-			'seed': ['s'],
+			'mnemonic': ['m'],
 			'key': ['k'],
 			'keystore': ['f'],
 			'password': ['p'],
 			'gas': ['g'],
-			'account': ['a']
+			'account': ['a'],
 			'account-index': ['n']
 		},
 		string: [
-			'seed',
+			'mnemonic',
 			'key',
 			'keystore',
 			'password',
@@ -70,11 +75,12 @@ function loadProgramArguments() {
 			'deployer'
 		]
 	});
-	if (_.isNil(args['target']))
-		throw new Error('Deployment target must be specified with --target flag');
+	const target = args._[0];
+	if (_.isNil(target))
+		throw new Error('Deployment target must be given');
 	return {
-		target: args['target'],
-		seed: args['seed'],
+		target: target,
+		mnemonic: args['mnemonic'],
 		key: args['key'],
 		keystore: args['keystore'],
 		password: args['password'],
@@ -85,21 +91,20 @@ function loadProgramArguments() {
 		network: args['network'],
 		infuraKey: args['infura-key'],
 		deployer: args._['deployer'],
-		target: args._[0]
+		target: target
 	};
 }
 
 async function loadContracts(cfg, eth) {
-	const artifacts await (_.isArray(cfg.contracts) ?
+	const artifacts = await (_.isArray(cfg.contracts) ?
 		project.getArtifacts(cfg.contracts) : project.getAllArtifacts());
-	return _.mapValues(artifacts,
-		a => createContract(artifact, eth, cfg));
+	return _.mapValues(artifacts, a => createContract(a, eth, cfg));
 }
 
-function createContract(artrifact, eth, cfg) {
+function createContract(artifact, eth, cfg) {
 	// Create a FlexContract instance with baked-in default options.
 	const defaults = {
-		gasPrice: cfg.gasPrice;
+		gasPrice: cfg.gasPrice
 	};
 	if (cfg.key)
 		defaults.key = cfg.key;
@@ -126,7 +131,7 @@ function createContract(artrifact, eth, cfg) {
 
 async function main() {
 	const args = loadProgramArguments();
-	const cfg = _.assign({}, await loadConfig(args.target), args);
+	const cfg = _.defaults({}, args, await loadConfig(args.target));
 	const eth = new FlexEther({
 		net: net,
 		provider: cfg.provider,
@@ -139,10 +144,14 @@ async function main() {
 			ethjs.util.addHexPrefix(cfg.account) : await eth.getDefaultAccount(),
 		key: await getDeployerKey(cfg)
 	});
-	if (!cfg.account || !cfg.key)
+	if (!cfg.account && !cfg.key)
 		throw new Error('Cannot determine deployer account');
-	if (cfg.deployer)
-		cfg.deployer = require(cfg.deployer);
+	// If the deployer is a string, assume it's a path to a script.
+	if (_.isString(cfg.deployer)) {
+		const _path = path.resolve(
+			path.dirname(project.DEPLOY_CONFIG_PATH), cfg.deployer);
+		cfg.deployer = require(_path);
+	}
 	if (!_.isFunction(cfg.deployer))
 		throw new Error('A "deployer" function or script was not provided');
 	const contracts = await loadContracts(cfg, eth);
