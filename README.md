@@ -1,3 +1,4 @@
+![build status](https://travis-ci.org/merklejerk/upcity-contracts.svg?branch=master)
 # Smart Contracts for [upcity.app](https://upcity.app)
 
 ## Install
