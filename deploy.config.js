@@ -2,13 +2,38 @@
 require('colors');
 const _ = require('lodash');
 const bn = require('bn-str-256');
-const secrets = require('./secrets.json');
+const fs = require('mz/fs');
+const path = require('path');
 const constants = require('./constants.js');
 const TOKEN_RESERVE = 1e3;
 const MARKET_DEPOSIT = 0.1;
 const CONNECTOR_WEIGHT = 0.66;
 const RESOURCE_NAMES = constants.RESOURCE_NAMES;
 const RESOURCE_SYMBOLS = constants.RESOURCE_SYMBOLS;
+
+let config = {
+	"ropsten": {
+		network: 'ropsten',
+		deployer: deploy,
+		gasPrice: 2e9,
+		authorities: ['0x2621ea417659Ad69bAE66af05ebE5788E533E5e7']
+	},
+	"main": {
+		deployer: deploy,
+		authorities: ['merklejerk.eth']
+	}
+};
+
+// Fold in secrets to each config target (if it exists).
+try {
+	const secrets = JSON.parse(
+		fs.readFileSync(path.resolve(__dirname, 'secrets.json')));
+	config = _.mapValues(config, target => _.assign(target, secrets))
+} catch (err) {
+	if (err.code != 'ENOENT')
+		throw err;
+}
+module.exports = config;
 
 async function deploy({contracts, target, config}) {
 	const {
@@ -52,18 +77,3 @@ async function deploy({contracts, target, config}) {
 		config.authorities).confirmed(3);
 	console.log('All done.')
 }
-
-const config = {
-	"ropsten": {
-		network: 'ropsten',
-		deployer: deploy,
-		gasPrice: 2e9,
-		authorities: ['0x2621ea417659Ad69bAE66af05ebE5788E533E5e7']
-	},
-	"main": {
-		deployer: deploy,
-		authorities: ['merklejerk.eth']
-	}
-};
-
-module.exports = _.mapValues(config, target => _.assign(target, secrets))
