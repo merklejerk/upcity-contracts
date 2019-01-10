@@ -4,15 +4,13 @@ const _ = require('lodash');
 const bn = require('bn-str-256');
 const secrets = require('./secrets.json');
 const constants = require('./constants.js');
-const GAME_AUTHORITIES = ['merklejerk.eth'];
-const GENESIS_PLAYER = GAME_AUTHORITIES[0];
 const TOKEN_RESERVE = 1e3;
 const MARKET_DEPOSIT = 0.1;
 const CONNECTOR_WEIGHT = 0.66;
 const RESOURCE_NAMES = constants.RESOURCE_NAMES;
 const RESOURCE_SYMBOLS = constants.RESOURCE_SYMBOLS;
 
-async function deploy({contracts, target}) {
+async function deploy({contracts, target, config}) {
 	const {
 		UpcityMarket: market,
 		UpcityGame: game,
@@ -50,8 +48,8 @@ async function deploy({contracts, target}) {
 	await game.init(
 		tokenAddresses,
 		market.address,
-		GENESIS_PLAYER,
-		GAME_AUTHORITIES).confirmed(3);
+		config.authorities[0],
+		config.authorities).confirmed(3);
 	console.log('All done.')
 }
 
@@ -59,7 +57,12 @@ const config = {
 	"ropsten": {
 		network: 'ropsten',
 		deployer: deploy,
-		gasPrice: 2e9
+		gasPrice: 2e9,
+		authorities: ['0x2621ea417659Ad69bAE66af05ebE5788E533E5e7']
+	},
+	"main": {
+		deployer: deploy,
+		authorities: ['merklejerk.eth']
 	}
 };
 
