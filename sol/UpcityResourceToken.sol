@@ -1,7 +1,6 @@
 pragma solidity ^0.5;
 
 import './base/openzeppelin/token/ERC20/ERC20.sol';
-import './Uninitialized.sol';
 import './Restricted.sol';
 import './Nonpayable.sol';
 

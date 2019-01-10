@@ -134,7 +134,7 @@ function hookContractMethods(contract, defaults) {
 	}
 	// Override clone() to hook the clone's methods too.
 	const clone = _.bind(contract.clone, contract);
-	contract.clone = (...args) => hookContractMethods(clone(...args));
+	contract.clone = (...args) => hookContractMethods(clone(...args), defaults);
 	return contract;
 }
 
@@ -194,7 +194,8 @@ if (require.main === module) {
 			await main();
 		} catch (err) {
 			console.error(err);
-			process.exitCode = -1;
+			process.exit(-1);
 		}
+		process.exit();
 	})();
 }

@@ -1,4 +1,5 @@
 'use strict'
+require('colors');
 const _ = require('lodash');
 const bn = require('bn-str-256');
 const secrets = require('./secrets.json');
@@ -12,10 +13,15 @@ const RESOURCE_NAMES = constants.RESOURCE_NAMES;
 const RESOURCE_SYMBOLS = constants.RESOURCE_SYMBOLS;
 
 async function deploy({contracts, target}) {
-	const {UpcityMarket: market, UpCityGame: game, UpcityResourceToken} = contracts;
+	const {
+		UpcityMarket: market,
+		UpcityGame: game,
+		UpcityResourceToken} = contracts;
 	// Deploy the market and game.
 	const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
+	console.log('Deploying market...');
 	await market.new(cw);
+	console.log('Deploying game...');
 	await game.new();
 	// Deploy and init the tokens.
 	const tokenAuthorities = [
@@ -25,25 +31,31 @@ async function deploy({contracts, target}) {
 	// Deploy the tokens.
 	const tokens = [];
 	for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
+		console.log(`Deploying resource token "${name}"...`);
 		const token = UpcityResourceToken.clone()
 		await token.new(name, symbol, TOKEN_RESERVE, tokenAuthorities);
 		tokens.push(token);
 	}
 	// Init the market.
 	const tokenAddresses = _.map(tokens, t => t.address);
+	console.log('Initializing the market...');
 	await market.init(tokenAddresses, {value: bn.mul(MARKET_DEPOSIT, '1e18')})
 	// Init the game.
+	console.log('Initializing the game...');
 	await game.init(
 		tokenAddresses,
 		market.address,
 		GENESIS_PLAYER,
 		GAME_AUTHORITIES);
+	console.log('All done.')
+	console.log(`Market: ${market.address.blue.bold}, Game: ${game.address.blue.bold}`);
 }
 
 const config = {
 	"ropsten": {
 		network: 'ropsten',
-		deployer: deploy
+		deployer: deploy,
+		gasPrice: 2e9
 	}
 };
 
