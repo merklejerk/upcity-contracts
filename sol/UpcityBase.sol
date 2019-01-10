@@ -81,13 +81,13 @@ contract UpcityBase {
 	struct BlockStats {
 		// The total number of blocks of this resource, across all tiles.
 		uint64 count;
+		// The global production daily limit for this resource, expressed in PPM.
+		// Note that this is a "soft" limit, as tiles in season produce bonus
+		// resources defined by SEASON_YIELD_BONUS.
+		uint64 production;
 		// The total "score" of blocks of this resource, across all tiles.
 		// Score for a block depends on its height.
-		uint256 score;
-		// The global production daily limit for this resource.
-		// The expected daily prooduction of all combined tiles is
-		// this number * (1 + 1 / NUM_SEASONS).
-		uint256 production;
+		uint128 score;
 	}
 
 	// solhint-disable
@@ -115,6 +115,8 @@ contract UpcityBase {
 	uint256 internal constant MINIMUM_TILE_PRICE = $$(uint256(ONE_TOKEN * MINIMUM_TILE_PRICE));
 	// How much to increase the base tile price every time it's bought, in ppm.
 	uint64 internal constant PURCHASE_MARKUP = $$(TO_PPM(1+PURCHASE_MARKUP));
+	// Scaling factor for global production limits.
+	uint64 internal constant PRODUCTION_ALPHA = $$(TO_PPM(PRODUCTION_ALPHA));
 	// The number of seasons.
 	uint64 internal constant NUM_SEASONS = $$(NUM_SEASONS);
 	// The length of each season, in seconds.
@@ -125,13 +127,11 @@ contract UpcityBase {
 	uint64 internal constant SEASON_PRICE_BONUS = $$(TO_PPM(1+SEASON_PRICE_BONUS));
 	// Multiplier for to resources generated when a tile is in season, in ppm.
 	uint64 internal constant SEASON_YIELD_BONUS = $$(TO_PPM(1+SEASON_YIELD_BONUS));
-	// #def BLOCK_HEIGHT_PREMIUM_BASE 4**(1/(MAX_HEIGHT-1))
 	// The building cost multiplier for any block at a certain height, in ppm.
 	uint64[MAX_HEIGHT] internal BLOCK_HEIGHT_PREMIUM = [
 		$$(join(map(range(MAX_HEIGHT),
 		h => AS_UINT64(TO_PPM(BLOCK_HEIGHT_PREMIUM_BASE**h))), ARRAY_SEP))
 	];
-	// #def BLOCK_HEIGHT_BONUS_BASE 2**(1/(MAX_HEIGHT-1))
 	// The yield multiplier for any block at a certain height, in ppm.
 	uint64[MAX_HEIGHT] internal BLOCK_HEIGHT_BONUS = [
 		$$(join(map(range(MAX_HEIGHT),

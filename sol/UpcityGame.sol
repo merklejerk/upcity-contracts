@@ -85,16 +85,18 @@ contract UpcityGame is
 	/// @dev Get global stats for every resource type.
 	/// @return A tuple of:
 	/// array of the total number of blocks for each resource,
-	/// array of the daily production limit for each resource.
+	/// array of the total scores for each resource, in ppm.
+	/// array of the daily production limit for each resource, in tokens, in ppm.
 	function getBlockStats()
 			external view returns (
-				uint64[NUM_RESOURCES] memory count,
-				uint256[NUM_RESOURCES] memory production) {
+				uint64[NUM_RESOURCES] memory counts,
+				uint64[NUM_RESOURCES] memory productions,
+				uint128[NUM_RESOURCES] memory scores) {
 
 		// #for RES in range(NUM_RESOURCES)
-		count[$$(RES)] = _blockStats[$$(RES)].count;
-		production[$$(RES)] =
-			(_blockStats[$$(RES)].production * ONE_TOKEN) / PPM_ONE;
+		counts[$$(RES)] = _blockStats[$$(RES)].count;
+		scores[$$(RES)] = _blockStats[$$(RES)].score;
+		productions[$$(RES)] = _blockStats[$$(RES)].production;
 		// #done
 	}
 
@@ -183,6 +185,7 @@ contract UpcityGame is
 		require(msg.value >= price, ERROR_INSUFFICIENT);
 		address oldOwner = tile.owner;
 		tile.owner = msg.sender;
+		tile.timesBought += 1;
 		// Base price increases every time a tile is bought.
 		tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
 		// Create the neighboring tiles.
@@ -471,8 +474,11 @@ contract UpcityGame is
 			BlockStats storage bs = _blockStats[b];
 			bs.score += BLOCK_HEIGHT_BONUS[h];
 			bs.count += 1;
-			bs.production = 2 * uint256(_estIntegerSqrt(bs.count,
-				uint64(bs.production / 2)));
+			// Incrementally compute the production limit.
+			uint64 production = (PPM_ONE * bs.production) / PRODUCTION_ALPHA;
+			production = _estIntegerSqrt(bs.count, production);
+			production = (production * PRODUCTION_ALPHA) / PPM_ONE;
+			bs.production = production;
 		}
 	}
 

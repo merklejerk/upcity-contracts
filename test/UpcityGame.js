@@ -163,7 +163,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		// Deploy the market and game.
 		const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
 		await this.market.new(cw);
-		await this.game.new();
+		const tx = await this.game.new();
 		// Deploy and init the tokens.
 		const tokenAuthorities = [
 			this.game.address,
@@ -256,23 +256,60 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	describe('game', function() {
 		it('block stats are zero initially', async function() {
-			const {count, production} = await this.game.getBlockStats();
+			const {counts, scores, productions} = await this.game.getBlockStats();
 			const zeroes = _.times(NUM_RESOURCES, i => '0');
-			assert.deepEqual(count, zeroes);
-			assert.deepEqual(production, zeroes);
+			assert.deepEqual(counts, zeroes);
+			assert.deepEqual(scores, zeroes);
+			assert.deepEqual(productions, zeroes);
 		});
 
-		it('block stats increase with building a tower', async function() {
-			const [x, y] = [0, 0];
-			const numBlocks = _.random(1, MAX_HEIGHT);
-			const blocks = _.times(numBlocks, i => _.sample(BLOCKS));
-			await buildTower(x, y, blocks);
-			const {count, production} = await this.game.getBlockStats();
-			for (let res = 0; res < NUM_RESOURCES; res++) {
-				if (_.includes(blocks, res)) {
-					assert(bn.gt(count[res], 0));
-					assert(bn.gt(production[res], 0));
+		it('block stats increase predictably with building towers', async function() {
+			const numTiles = 6;
+			const tiles = [{player: this.genesisPlayer, x: 0, y: 0}];
+			const buyers = _.sampleSize(this.users, numTiles - 1);
+			// Meander around, buying up to numTiles.
+			for (let buyer of buyers) {
+				const prevTile = _.last(tiles);
+				// Look ath the neighbors of the last tile.
+				let neighbors = _.map(NEIGHBOR_OFFSETS,
+					([x, y]) => [prevTile.x + x, prevTile.y + y]);
+				// Filter out neighbors we've already added.
+				neighbors = _.filter(neighbors,
+					([x, y]) => !_.find(tiles, t => t.x == x && t.y == y));
+				const [x, y] = _.sample(neighbors);
+				const info = await describeTile(x, y);
+				if (info.owner != buyer)
+					await buyTile(x, y, buyer);
+				tiles.push({
+					player: buyer,
+					x: x,
+					y: y
+				});
+			}
+			// Build a random tower in each tile, aggregating scores and counts.
+			const blockCounts = _.times(NUM_RESOURCES, i => 0);
+			const blockScores = _.times(NUM_RESOURCES, i => 0);
+			const HEIGHT_BONUSES = _.times(MAX_HEIGHT,
+				height => constants.BLOCK_HEIGHT_BONUS_BASE ** height)
+			for (let tile of tiles) {
+				const blocks = _.times(_.random(1, MAX_HEIGHT), i => _.sample(BLOCKS));
+				for (let height = 0; height < blocks.length; height++) {
+					const block = blocks[height];
+					blockCounts[block] += 1;
+					blockScores[block] += HEIGHT_BONUSES[height];
 				}
+				await buildTower(tile.x, tile.y, blocks, tile.player);
+			}
+			const blockProductions = _.times(NUM_RESOURCES,
+				i => constants.PRODUCTION_ALPHA * (blockCounts[i] ** 0.5));
+			// Check the block stats.
+			const {counts, scores, productions} = _.mapValues(
+				await this.game.getBlockStats(), v => _.map(v, v => bn.toNumber(v)));
+			const ERR = 1e-2;
+			for (let block = 0; block < NUM_RESOURCES; block++) {
+				assert.equal(counts[block], blockCounts[block]);
+				assert(Math.abs(scores[block] / 1e6 - blockScores[block]) <= ERR);
+				assert(Math.abs(productions[block] / 1e6 - blockProductions[block]) <= ERR);
 			}
 		});
 	});

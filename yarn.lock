@@ -1039,21 +1039,21 @@ find-up@^2.1.0:
   dependencies:
     locate-path "^2.0.0"
 
-flex-contract@^1.6.1:
-  version "1.6.1"
-  resolved "https://registry.yarnpkg.com/flex-contract/-/flex-contract-1.6.1.tgz#bfa33763b509737dc1f18e26248517552b918033"
-  integrity sha512-X1c8Y467Jhg6Zn3fQgUdUbxM7N2nNSKKTQ4/AOXcAr1y0hfitTsI8zF+mZ+hflM1zcUuEGs+azUGn9oxNySArw==
+flex-contract@^1.6.2:
+  version "1.6.2"
+  resolved "https://registry.yarnpkg.com/flex-contract/-/flex-contract-1.6.2.tgz#ef88d16d8bd6b898ac3c3196028d5dbfe5d44068"
+  integrity sha512-LZhPsMGaEHCp+VmL+v0YT3hlRdQ26tAUZw2+X2QXseq3cTSPQwr2+JrEJ6qGBGR7glyNdyHNWO+uHbWHdhMkZg==
   dependencies:
     bignumber.js "^7.2.1"
     ethereumjs-util "^5.2.0"
-    flex-ether "^1.1.4"
+    flex-ether "^1.2.0"
     lodash "^4.17.10"
     web3 "^1.0.0-beta.34"
 
-flex-ether@^1.1.4:
-  version "1.1.4"
-  resolved "https://registry.yarnpkg.com/flex-ether/-/flex-ether-1.1.4.tgz#e291d3e06d3781e1eca2e3940f8ad7ba4410a365"
-  integrity sha512-ZYUJjzSYvlESIP1uOo2CeE+l2uNRvDQ7degbDwXr7X0VKr+WeKeMOuPl8DHWtUs/ZFNLftjnIoXoCw6o1qFe4w==
+flex-ether@^1.2.0:
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/flex-ether/-/flex-ether-1.2.0.tgz#adac155431a49801b188b7aceb77ed7999400f45"
+  integrity sha512-acnp69Gdx/ZqFV3ODBPrpHwWXAVbNWBePS5OpGSEsxasYl1Yp7/xKYqdBpKlV758JOa8SLakqjDQ3BeW8bArPw==
   dependencies:
     bignumber.js "^7.2.1"
     create-web3-provider "^1.0.0"

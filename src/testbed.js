@@ -103,9 +103,7 @@ module.exports = async function(opts={}) {
 	const providerOpts = {
 		accounts: _.map(accounts, a => ({secretKey: a.secret, balance: a.balance})),
 		allowUnlimitedContractSize: true,
-		locked: false,
-		unlocked_accounts: _.map(accounts, a => a.address),
-		gasLimit: '0x5f5e100', // 100e6 (why does it have to be so high?)
+		gasLimit: '0x3B9ACA00', // 1e9
 		gasPrice: '0x1'
 	};
 	const provider = ganache.provider(providerOpts);
