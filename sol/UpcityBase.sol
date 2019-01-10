@@ -63,6 +63,8 @@ contract UpcityBase {
 		uint8 height;
 		// NUM_NEIGHBORS + the height of each neighbor's tower.
 		uint8 neighborCloutsTotal;
+		// The name of the tile.
+		bytes12 name;
 		// The current owner of the tile.
 		address owner;
 		// The "base" price of a tile, NOT including neighborhood bonus,

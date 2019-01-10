@@ -126,6 +126,8 @@ contract UpcityGame is
 				/// @dev The id of the tile. This will be 0x0 if the tile does not
 				/// exist.
 				bytes16 id,
+				/// @dev The name of the tile. Zero-terminated UTF-8 string.
+				bytes12 name,
 				/// @dev The number of times the tile was bought.
 				uint32 timesBought,
 				/// @dev The number of times the tile was bought (0 of unowned).
@@ -150,6 +152,7 @@ contract UpcityGame is
 		Tile storage tile = _getTileAt(x, y);
 		id = tile.id;
 		timesBought = tile.timesBought;
+		name = tile.name;
 		owner = tile.owner;
 		lastTouchTime = tile.lastTouchTime;
 		blocks = tile.blocks;
@@ -161,6 +164,7 @@ contract UpcityGame is
 		}
 		else {
 			assert(owner == address(0x0));
+			name = 0x0;
 			price = 0;
 			resources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
 			inSeason = false;
@@ -177,7 +181,7 @@ contract UpcityGame is
 	/// existing funds/resources. Only the tile and its tower.
 	/// @param x The x position of the tile.
 	/// @param y The y position of the tile.
-	function buyTile(int32 x, int32 y) external payable onlyInitialized {
+	function buy(int32 x, int32 y) external payable onlyInitialized {
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
 		require(tile.owner != msg.sender, ERROR_ALREADY);
@@ -232,6 +236,18 @@ contract UpcityGame is
 		}
 		_incrementBlockStats(blocks, count);
 		emit Built(tile.id, tile.owner, tile.blocks);
+	}
+
+	/// @dev Rename a tile.
+	/// Only the owner of the tile may call this.
+	/// @param x The x position of the tile.
+	/// @param y The y position of the tile.
+	/// @param name Name to give the tile (UTF-8, zero-terminated).
+	function rename(int32 x, int32 y, bytes12 name) external onlyInitialized {
+		Tile storage tile = _getExistingTileAt(x, y);
+		// Must be owned by caller.
+		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
+		tile.name = name;
 	}
 
 	/// @dev Transfer fees (ether) collected to an address.

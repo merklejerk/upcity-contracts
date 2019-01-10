@@ -40,9 +40,24 @@ function encodeBlocks(blocks) {
 		n => bn.toHex(n, 2).substr(2)).join('');
 }
 
+function encodeName(name) {
+	return '0x'+ethjs.setLengthRight(Buffer.from(name), 12).toString('hex');
+}
+
+function decodeName(encoded) {
+	const buf = ethjs.toBuffer(encoded);
+	let end = 0;
+	for (; end < buf.length; end++) {
+		if (buf[end] == 0)
+			break;
+	}
+	return buf.slice(0, end).toString();
+}
+
 function unpackDescription(r) {
 	return {
 		id: r.id,
+		name: decodeName(r.name),
 		timesBought: bn.toNumber(r.timesBought),
 		lastTouchTime: bn.toNumber(r.lastTouchTime),
 		owner: r.owner,
@@ -144,7 +159,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	async function buyTile(x, y, player) {
 		const {price} = await describeTile(x, y);
-		return this.game.buyTile(x, y, {from: player, value: price});
+		return this.game.buy(x, y, {from: player, value: price});
 	}
 
 	before(async function() {
@@ -251,6 +266,26 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				await this.game.__advanceTime(dt);
 			}
 			assert.equal(timesInSeason, SEASON_FREQUENCY);
+		});
+	});
+
+	describe('naming', function() {
+		it('allows owner to rename tile', async function() {
+			const player = this.genesisPlayer;
+			const [x, y] = [0, 0];
+			const name = 'foobar';
+			await this.game.rename(x, y, encodeName(name), {from: player});
+			const {name: actualName} = await describeTile(x, y);
+			assert.equal(actualName, name);
+		});
+
+		it('non-owner cannot rename tile', async function() {
+			const player = _.sample(this.users);
+			const [x, y] = [0, 0];
+			const name = 'foobar';
+			await assert.rejects(
+				this.game.rename(x, y, encodeName(name), {from: player}),
+				ERRORS.NOT_ALLOWED);
 		});
 	});
 
@@ -393,7 +428,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		it('cannot buy a tile that doesn\'t exist', async function() {
 			const [buyer] = _.sampleSize(this.users, 1);
 			// Just send a lot of ether since we can't get the price.
-			await assert.rejects(this.game.buyTile(100, 100,
+			await assert.rejects(this.game.buy(100, 100,
 				{from: buyer, value: bn.mul(10, ONE_TOKEN)}),
 				ERRORS.NOT_FOUND);
 		});
@@ -422,7 +457,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		it('cannot buy a tile with insufficient funds', async function() {
 			const [buyer] = _.sampleSize(this.users, 1);
 			let tile = await describeTile(0, 0);
-			await assert.rejects(this.game.buyTile(0, 0,
+			await assert.rejects(this.game.buy(0, 0,
 				{from: buyer, value: bn.sub(tile.price, 1)}),
 				ERRORS.INSUFFICIENT);
 		});
@@ -430,10 +465,10 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		it('cannot buy a tile you already own', async function() {
 			const [buyer] = _.sampleSize(this.users, 1);
 			let tile = await describeTile(0, 0);
-			await this.game.buyTile(0, 0,
+			await this.game.buy(0, 0,
 				{from: buyer, value: tile.price});
 			tile = await describeTile(0, 0);
-			await assert.rejects(this.game.buyTile(0, 0,
+			await assert.rejects(this.game.buy(0, 0,
 				{from: buyer, value: tile.price}),
 				ERRORS.ALREADY);
 		});
@@ -443,7 +478,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			let tile = await describeTile(0, 0);
 			const prevOwner = tile.owner;
 			const ownerBalance = await this.game.credits(prevOwner);
-			const tx = await this.game.buyTile(0, 0,
+			const tx = await this.game.buy(0, 0,
 				{from: buyer, value: tile.price});
 			assert(bn.gt(await this.game.credits(prevOwner), ownerBalance));
 		});
@@ -483,7 +518,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const excess = '123';
 			const payment = bn.add(tile.price, excess);
 			const balanceBefore = await this.eth.getBalance(buyer);
-			const tx = await this.game.buyTile(0, 0,
+			const tx = await this.game.buy(0, 0,
 				{from: buyer, value: payment, gasPrice: 1});
 			const balanceAfter = await this.eth.getBalance(buyer);
 			const expectedBalance = bn.sub(balanceBefore,
@@ -496,7 +531,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const [x, y] = _.sample(NEIGHBOR_OFFSETS);
 			let tile = await describeTile(x, y);
 			const feesBefore = await this.game.fees();
-			const tx = await this.game.buyTile(x, y,
+			const tx = await this.game.buy(x, y,
 				{from: player, value: tile.price});
 			const feesAfter = await this.game.fees();
 			assert(bn.gt(feesAfter, feesBefore));
@@ -507,7 +542,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const [x, y] = [0, 0];
 			let tile = await describeTile(x, y);
 			const feesBefore = await this.game.fees();
-			const tx = await this.game.buyTile(x, y,
+			const tx = await this.game.buy(x, y,
 				{from: player, value: tile.price});
 			const feesAfter = await this.game.fees();
 			assert(bn.gt(feesAfter, feesBefore));
@@ -519,7 +554,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			let tile = await describeTile(x, y);
 			const prevOwner = tile.owner;
 			const ownerBalance = await this.eth.getBalance(prevOwner);
-			const tx = await this.game.buyTile(x, y,
+			const tx = await this.game.buy(x, y,
 				{from: buyer, value: tile.price});
 			assert(tx.findEvent('Collected', {id: toTileId(x, y)}));
 		});
@@ -529,7 +564,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		it('buying a tile increases its price', async function() {
 			const [buyer] = _.sampleSize(this.users, 1);
 			const {price} = await describeTile(0, 0);
-			await this.game.buyTile(0, 0, {from: buyer, value: price});
+			await this.game.buy(0, 0, {from: buyer, value: price});
 			const {price: newPrice} = await describeTile(0, 0);
 			assert(bn.gt(newPrice, price));
 		});
