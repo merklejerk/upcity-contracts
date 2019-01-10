@@ -1,4 +1,5 @@
 'use strict'
+require('colors');
 const _ = require('lodash');
 const bn = require('bn-str-256');
 const path = require('path');
@@ -102,6 +103,7 @@ async function loadContracts(cfg, eth) {
 }
 
 function createContract(artifact, eth, cfg) {
+	const contract = new FlexContract(artifact, {eth: eth});
 	// Create a FlexContract instance with baked-in default options.
 	const defaults = {
 		gasPrice: cfg.gasPrice
@@ -110,9 +112,13 @@ function createContract(artifact, eth, cfg) {
 		defaults.key = cfg.key;
 	if (cfg.account)
 		defaults.from = cfg.account;
-	const contract = new FlexContract(artifact, {eth: eth});
+	return hookContractMethods(contract, defaults);
+}
+
+function hookContractMethods(contract, defaults) {
+	// Override all ABI functions.
 	const overrideTypes = ['function', 'constructor']
-	const defs = _.filter(artifact.abi, i => _.includes(overrideTypes, i.type));
+	const defs = _.filter(contract.abi, i => _.includes(overrideTypes, i.type));
 	for (let def of defs) {
 		const name = def.name || 'new';
 		const method = contract[name];
@@ -122,11 +128,37 @@ function createContract(artifact, eth, cfg) {
 				if (!_.isPlainObject(opts))
 					args.push(opts = {});
 				_.defaults(opts, defaults);
-				return method(...args);
+				return method.call(contract, ...args);
 			}
 		}
 	}
+	// Override clone() to hook the clone's methods too.
+	const clone = _.bind(contract.clone, contract);
+	contract.clone = (...args) => hookContractMethods(clone(...args));
 	return contract;
+}
+
+function keyToAddress(key) {
+	return ethjs.util.toChecksumAddress(
+		ethjs.util.bufferToHex(
+			ethjs.util.privateToAddress(
+				ethjs.util.toBuffer(key))));
+}
+
+async function deploy(opts) {
+	if (!_.isFunction(opts.deployer))
+		throw new Error('A "deployer" function or script was not provided');
+	const account = opts.config.account ?
+		opts.config.account : keyToAddress(opts.config.key);
+	console.log(`Deploying to "${opts.target.bold}" from ${account.blue.bold}...`);
+	const contracts = await loadContracts(opts.config, opts.eth);
+	return opts.deployer({
+		contracts: contracts,
+		eth: opts.eth,
+		target: opts.target,
+		config: opts.config,
+		account: account
+	});
 }
 
 async function main() {
@@ -147,20 +179,13 @@ async function main() {
 	if (!cfg.account && !cfg.key)
 		throw new Error('Cannot determine deployer account');
 	// If the deployer is a string, assume it's a path to a script.
+	let deployer = cfg.deployer;
 	if (_.isString(cfg.deployer)) {
 		const _path = path.resolve(
 			path.dirname(project.DEPLOY_CONFIG_PATH), cfg.deployer);
-		cfg.deployer = require(_path);
+		deployer = require(_path);
 	}
-	if (!_.isFunction(cfg.deployer))
-		throw new Error('A "deployer" function or script was not provided');
-	const contracts = await loadContracts(cfg, eth);
-	return cfg.deployer({
-		contracts: contracts,
-		eth: eth,
-		target: args.target,
-		config: cfg
-	});
+	return deploy({config: cfg, eth: eth, target: args.target, deployer: deployer});
 }
 
 if (require.main === module) {
