@@ -21,8 +21,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	before(async function() {
 		await this.contract.new(
-			TOKEN_NAME, TOKEN_SYMBOL, RESERVE);
-		await this.contract.init([this.authority]);
+			TOKEN_NAME, TOKEN_SYMBOL, RESERVE, [this.authority]);
 	});
 
 	beforeEach(async function() {

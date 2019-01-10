@@ -12,10 +12,11 @@ const {
 	MAX_HEIGHT,
 	NUM_RESOURCES,
 	NUM_SEASONS,
-	SEASON_FREQUENCY } = constants;
+	SEASON_FREQUENCY,
+ 	RESOURCE_NAMES,
+	RESOURCE_SYMBOLS } = constants;
 const CONNECTOR_WEIGHT = 0.66;
 const BLOCKS = _.times(NUM_RESOURCES);
-const BLOCK_NAMES = ['Onite', 'Topite', 'Rubite'];
 const RESERVE = bn.mul(ONE_TOKEN, 1e3);
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
 const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
@@ -159,23 +160,31 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		buildTower = _.bind(buildTower, this);
 		buyTile = _.bind(buyTile, this);
 
-		await this.market.new(Math.round(1e6 * CONNECTOR_WEIGHT));
-		const tx = await this.game.new();
+		// Deploy the market and game.
+		const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
+		await this.market.new(cw);
+		await this.game.new();
+		// Deploy and init the tokens.
+		const tokenAuthorities = [
+			this.game.address,
+			this.market.address,
+			this.accounts[0]
+		];
 		this.tokens = [];
-		for (let name of BLOCK_NAMES) {
-			const symbol = _.upperCase(name.substr(0, 3));
+		for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
 			const token = this.contracts['UpcityResourceToken'].clone();
-			await token.new(
-				name, name.substr(0, 3),
-				RESERVE);
-			await token.init([
-				this.game.address, this.market.address, this.accounts[0]]);
+			await token.new(name, symbol, RESERVE, tokenAuthorities);
 			this.tokens.push(token);
 		}
+		// Init the market.
 		const tokens = _.map(this.tokens, t => t.address);
 		await this.market.init(tokens, {value: MARKET_DEPOSIT});
-		await this.game.init(tokens, this.market.address,
-			[this.authority], this.genesisPlayer);
+		//  Init the game.
+		await this.game.init(
+			tokens,
+			this.market.address,
+			this.genesisPlayer,
+			[this.authority], );
 	});
 
 	beforeEach(async function() {
@@ -191,7 +200,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const tokens = _.map(this.tokens, t => t.address);
 			await assert.rejects(
 				this.game.init(tokens, this.market.address,
-					[this.authority], this.genesisPlayer),
+					this.genesisPlayer, [this.authority]),
 				ERRORS.UNINITIALIZED);
 		});
 

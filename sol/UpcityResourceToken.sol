@@ -7,7 +7,7 @@ import './Nonpayable.sol';
 
 /// @title ERC20 token contract for upcity resources.
 /// @author Lawrence Forman (me@merklejerk.com)
-contract UpcityResourceToken is ERC20, Uninitialized, Restricted, Nonpayable {
+contract UpcityResourceToken is ERC20, Restricted, Nonpayable {
 
 	using SafeMath for uint256;
 
@@ -16,42 +16,32 @@ contract UpcityResourceToken is ERC20, Uninitialized, Restricted, Nonpayable {
 	uint8 public constant decimals = 18;
 	address internal constant ZERO_ADDRESS = address(0x0);
 
-	/// @dev Creates the contract. The contract will still need to be
-	/// initialized via initialize() before tokens can be minted or burned
-	/// to other addresses.
+	/// @dev Creates the contract.
 	/// @param _name Token name
 	/// @param _symbol Token symbol
 	/// @param reserve Amount of tokens the contract instantly mint and will keep
+	/// @param authorities List of authority addresses.
 	/// locked up forever.
 	constructor(
 			string memory _name,
 			string memory _symbol,
-			uint256 reserve)
+			uint256 reserve,
+			address[] memory authorities)
 			public {
 
 		require(reserve >= 0, ERROR_INVALID);
+		require(authorities.length > 0, ERROR_INVALID);
 		name = _name;
 		symbol = _symbol;
+		for (uint256 i = 0; i < authorities.length; i++)
+			isAuthority[authorities[i]] = true;
 		_mint(address(this), reserve);
-	}
-
-	/// @dev Initialize the contract by setting the authorities.
-	/// Authorities are who are allowed to call the mint and burn
-	/// functions.
-	/// @param  _authorities List of authority addresses.
-	function init(address[] calldata _authorities)
-			external onlyUninitialized onlyCreator {
-
-		require(_authorities.length > 0, ERROR_INVALID);
-		for (uint256 i = 0; i < _authorities.length; i++)
-			isAuthority[_authorities[i]] = true;
-		Uninitialized._init();
 	}
 
 	/// @dev Mint new tokens and give them to an address.
 	/// Only the authority may call this.
 	function mint(address to, uint256 amt)
-			public onlyInitialized onlyAuthority {
+			public onlyAuthority {
 
 		_mint(to, amt);
 	}
@@ -59,7 +49,7 @@ contract UpcityResourceToken is ERC20, Uninitialized, Restricted, Nonpayable {
 	/// @dev Burn tokens held by an address.
 	/// Only the authority may call this.
 	function burn(address from, uint256 amt)
-			public onlyInitialized onlyAuthority {
+			public onlyAuthority {
 
 		require(amt > 0, ERROR_INVALID);
 		require(from != ZERO_ADDRESS && from != address(this), ERROR_INVALID);

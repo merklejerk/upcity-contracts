@@ -10,7 +10,9 @@ const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
 const RESERVE = ONE_TOKEN;
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
 const CONNECTOR_WEIGHT = 0.66;
-const NUM_TOKENS = constants.NUM_RESOURCES;
+const NUM_RESOURCES = constants.NUM_RESOURCES;
+const RESOURCE_NAMES = constants.RESOURCE_NAMES;
+const RESOURCE_SYMBOLS = constants.RESOURCE_SYMBOLS;
 
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	before(async function() {
@@ -23,11 +25,13 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	before(async function() {
 		await this.market.new(Math.round(1e6 * CONNECTOR_WEIGHT));
 		this.tokens = [];
-		for (let i = 0; i < NUM_TOKENS; i++) {
+		for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
 			const token = this.contracts['UpcityResourceToken'].clone();
 			await token.new(
-				`Token-${i}`, `TTK${i}`, RESERVE);
-			await token.init([this.market.address, this.accounts[0]]);
+				name,
+				symbol,
+				RESERVE,
+				[this.market.address, this.accounts[0]]);
 			this.tokens.push(token);
 		}
 		await this.market.init(

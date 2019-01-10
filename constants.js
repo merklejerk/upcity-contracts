@@ -5,6 +5,8 @@ module.exports = {
 	SEASON_YIELD_BONUS: 0.25,
 	SEASON_PRICE_BONUS: 0.5,
 	NUM_RESOURCES: 3,
+	RESOURCE_NAMES: ['Onite', 'Topite', 'Rubite'],
+	RESOURCE_SYMBOLS: ['UC-OT', 'UC-TP', 'UC-RB'],
 	NUM_NEIGHBORS: 6,
 	MAX_HEIGHT: 16,
 	PRECISION: 1e6,

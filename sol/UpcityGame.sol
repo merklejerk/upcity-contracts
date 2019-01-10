@@ -58,14 +58,13 @@ contract UpcityGame is
 	/// first by the the contract creator. This cannot be called twice.
 	/// @param tokens Each resource's UpcityResourceToken addresses.
 	/// @param market The UpcityMarket address.
-	/// @param authorities Array of addresses allowed to collect fees.
 	/// @param authorities Array of addresses allowed to call collectFees().
-	/// @param genesisOwner The owner of the genesis tile, at <0,0>.
+	/// @param genesisPlayer The owner of the genesis tile, at <0,0>.
 	function init(
 			address[NUM_RESOURCES] calldata tokens,
 			address market,
-			address[] calldata authorities,
-			address genesisOwner)
+			address genesisPlayer,
+			address[] calldata authorities)
 			external onlyCreator onlyUninitialized {
 
 		require(tokens.length == NUM_RESOURCES, ERROR_INVALID);
@@ -77,7 +76,7 @@ contract UpcityGame is
 
 		// Create the genesis tile and its neighbors.
 		Tile storage tile = _createTileAt(0, 0);
-		tile.owner = genesisOwner;
+		tile.owner = genesisPlayer;
 		tile.timesBought = 1;
 		_createNeighbors(tile.x, tile.y);
 		_init();
