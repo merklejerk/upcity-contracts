@@ -15,7 +15,7 @@ let config = {
 	"ropsten": {
 		network: 'ropsten',
 		deployer: deploy,
-		gasPrice: 2e9,
+		gasPrice: 10e9,
 		authorities: ['0x2621ea417659Ad69bAE66af05ebE5788E533E5e7']
 	},
 	"main": {
