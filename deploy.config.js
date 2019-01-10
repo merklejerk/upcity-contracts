@@ -20,9 +20,11 @@ async function deploy({contracts, target}) {
 	// Deploy the market and game.
 	const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
 	console.log('Deploying market...');
-	await market.new(cw);
+	await market.new(cw).confirmed(3);
+	console.log(`\tDeployed to: ${market.address.blue.bold}`);
 	console.log('Deploying game...');
-	await game.new();
+	await game.new().confirmed(3);
+	console.log(`\tDeployed to: ${game.address.blue.bold}`);
 	// Deploy and init the tokens.
 	const tokenAuthorities = [
 		game.address,
@@ -32,23 +34,25 @@ async function deploy({contracts, target}) {
 	const tokens = [];
 	for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
 		console.log(`Deploying resource token "${name}"...`);
-		const token = UpcityResourceToken.clone()
-		await token.new(name, symbol, TOKEN_RESERVE, tokenAuthorities);
+		const token = UpcityResourceToken.clone();
+		await token.new(name, symbol, TOKEN_RESERVE, tokenAuthorities).confirmed(3);
+		console.log(`\tDeployed to: ${token.address.blue.bold}`);
 		tokens.push(token);
 	}
 	// Init the market.
 	const tokenAddresses = _.map(tokens, t => t.address);
 	console.log('Initializing the market...');
-	await market.init(tokenAddresses, {value: bn.mul(MARKET_DEPOSIT, '1e18')})
+	await market.init(
+		tokenAddresses,
+		{value: bn.mul(MARKET_DEPOSIT, '1e18')}).confirmed(3);
 	// Init the game.
 	console.log('Initializing the game...');
 	await game.init(
 		tokenAddresses,
 		market.address,
 		GENESIS_PLAYER,
-		GAME_AUTHORITIES);
+		GAME_AUTHORITIES).confirmed(3);
 	console.log('All done.')
-	console.log(`Market: ${market.address.blue.bold}, Game: ${game.address.blue.bold}`);
 }
 
 const config = {
