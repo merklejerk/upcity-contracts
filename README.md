@@ -22,14 +22,13 @@ The deployment configuration/logic is in
 
 You will likely want to change the `authorities` fields to addresses you control.
 
-In order to deploy the contracts, the deployment pipeline needs your deployer's
-credentials. There are two basic ways to provide that.
+If you want to use the default (Infura/node-less) deployment configuration, the pipeline needs your deployer account's credentials. There are two
+basic ways to provide that.
 
 ### Defining credentials in a secrets.json file
 
-If you want to use the default (Infura) deployment configuration, you will need
-to create a `secrets.json` file in the root directory (it is explicitly
-blacklisted in `[.gitignore](./.gitignore)`, so it will not be committed).
+First create a `secrets.json` file in the root directory (it is explicitly
+blacklisted in [`.gitignore`](./.gitignore), so it will not be committed).
 
 This file defines the private key of your deployer.
 
