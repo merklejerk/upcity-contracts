@@ -72,7 +72,7 @@ function unpackDescription(r) {
 function toInt32Buffer(v) {
 	if (bn.lt(v, 0)) {
 		// Encode as two's complement.
-		const bits = _.map(bn.toBits(bn.abs(v), -4*8), b => (b+1) % 2);
+		const bits = _.map(bn.toBits(bn.abs(v), 4*8), b => (b+1) % 2);
 		v = bn.add(bn.fromBits(bits), 1);
 	}
 	return bn.toBuffer(v, 4);

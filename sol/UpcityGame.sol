@@ -130,8 +130,6 @@ contract UpcityGame is
 				bytes12 name,
 				/// @dev The number of times the tile was bought.
 				uint32 timesBought,
-				/// @dev The number of times the tile was bought (0 of unowned).
-				uint64 lastTouchTime,
 				/// @dev The current owner of the tile (0x0 if unowned).
 				address owner,
 				// Right-aligned, packed representation of blocks,
@@ -154,7 +152,6 @@ contract UpcityGame is
 		timesBought = tile.timesBought;
 		name = tile.name;
 		owner = tile.owner;
-		lastTouchTime = tile.lastTouchTime;
 		blocks = tile.blocks;
 		if (id != 0x0) {
 			price = _getTilePrice(tile);
