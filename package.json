@@ -20,7 +20,7 @@
 		"ethereumjs-util": "^6.0.0",
 		"ethereumjs-wallet": "^0.6.3",
 		"flex-contract": "^1.8.0",
-		"flex-ether": "^1.2.1",
+		"flex-ether": "^1.2.3",
 		"fs-extra": "^7.0.0",
 		"ganache-cli": "^6.2.5",
 		"glob": "^7.1.3",

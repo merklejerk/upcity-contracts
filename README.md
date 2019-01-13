@@ -16,6 +16,15 @@ yarn -D
 yarn test
 ```
 
+
+## Build
+
+To create release artifacts of the contracts:
+
+```bash
+yarn build
+```
+
 ## Deploy
 
 The deployment configuration/logic is in

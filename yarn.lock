@@ -1063,6 +1063,19 @@ flex-ether@^1.2.1:
     lodash "^4.17.10"
     web3 "^1.0.0-beta.34"
 
+flex-ether@^1.2.3:
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/flex-ether/-/flex-ether-1.2.3.tgz#ed52b5cf4b512b692495ab00d9c1255740e32ac6"
+  integrity sha512-80CdkLf2bvhi+B11yFlX7eZgM6JDZThWH2AghxXyBxIok/ntf23f22KnvQmNQGtVmwrTw8y794YsJSglFkX1zw==
+  dependencies:
+    bignumber.js "^7.2.1"
+    create-web3-provider "^1.0.0"
+    ethereumjs-tx "1.3.4"
+    ethereumjs-util "^5.2.0"
+    ez-ens "^1.0.3"
+    lodash "^4.17.10"
+    web3 "^1.0.0-beta.34"
+
 follow-redirects@^1.3.0:
   version "1.6.1"
   resolved "https://registry.yarnpkg.com/follow-redirects/-/follow-redirects-1.6.1.tgz#514973c44b5757368bad8bddfe52f81f015c94cb"
