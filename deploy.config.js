@@ -5,9 +5,9 @@ const bn = require('bn-str-256');
 const fs = require('mz/fs');
 const path = require('path');
 const constants = require('./constants.js');
-const TOKEN_RESERVE = 1e3;
-const MARKET_DEPOSIT = 0.1;
-const CONNECTOR_WEIGHT = 0.66;
+const TOKEN_RESERVE = 32;
+const MARKET_DEPOSIT = 20/120;
+const CONNECTOR_WEIGHT = constants.CONNECTOR_WEIGHT;
 const RESOURCE_NAMES = constants.RESOURCE_NAMES;
 const RESOURCE_SYMBOLS = constants.RESOURCE_SYMBOLS;
 
@@ -67,7 +67,7 @@ async function deploy({contracts, target, config}) {
 		await token.new(
 			name,
 			symbol,
-			bn.mul(TOKEN_RESERVE, '1e18'), 
+			bn.mul(TOKEN_RESERVE, '1e18'),
 			tokenAuthorities)
 			.confirmed(confirmations);
 		console.log(`\tDeployed to: ${token.address.blue.bold}`);
