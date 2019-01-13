@@ -20,7 +20,12 @@ let config = {
 	},
 	"main": {
 		deployer: deploy,
-		authorities: ['merklejerk.eth']
+		authorities: ['merklejerk.eth'],
+	},
+	"localhost": {
+		deployer: deploy,
+		authorities: ['0x2621ea417659Ad69bAE66af05ebE5788E533E5e7'],
+		confirmations: 0
 	}
 };
 
@@ -36,6 +41,7 @@ try {
 module.exports = config;
 
 async function deploy({contracts, target, config}) {
+	const confirmations = _.get(config, 'confirmations', 2);
 	const {
 		UpcityMarket: market,
 		UpcityGame: game,
@@ -43,10 +49,10 @@ async function deploy({contracts, target, config}) {
 	// Deploy the market and game.
 	const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
 	console.log('Deploying market...');
-	await market.new(cw).confirmed(3);
+	await market.new(cw).confirmed(confirmations);
 	console.log(`\tDeployed to: ${market.address.blue.bold}`);
 	console.log('Deploying game...');
-	await game.new().confirmed(3);
+	await game.new().confirmed(confirmations);
 	console.log(`\tDeployed to: ${game.address.blue.bold}`);
 	// Deploy and init the tokens.
 	const tokenAuthorities = [
@@ -58,7 +64,8 @@ async function deploy({contracts, target, config}) {
 	for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
 		console.log(`Deploying resource token "${name}"...`);
 		const token = UpcityResourceToken.clone();
-		await token.new(name, symbol, TOKEN_RESERVE, tokenAuthorities).confirmed(3);
+		await token.new(name, symbol, TOKEN_RESERVE, tokenAuthorities)
+			.confirmed(confirmations);
 		console.log(`\tDeployed to: ${token.address.blue.bold}`);
 		tokens.push(token);
 	}
@@ -67,13 +74,13 @@ async function deploy({contracts, target, config}) {
 	console.log('Initializing the market...');
 	await market.init(
 		tokenAddresses,
-		{value: bn.mul(MARKET_DEPOSIT, '1e18')}).confirmed(3);
+		{value: bn.mul(MARKET_DEPOSIT, '1e18')}).confirmed(confirmations);
 	// Init the game.
 	console.log('Initializing the game...');
 	await game.init(
 		tokenAddresses,
 		market.address,
 		config.authorities[0],
-		config.authorities).confirmed(3);
+		config.authorities).confirmed(confirmations);
 	console.log('All done.')
 }

@@ -110,7 +110,7 @@ function createContract(artifact, eth, cfg) {
 	};
 	if (cfg.key)
 		defaults.key = cfg.key;
-	if (cfg.account)
+	else if (cfg.account)
 		defaults.from = cfg.account;
 	return hookContractMethods(contract, defaults);
 }
