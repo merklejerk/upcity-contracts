@@ -64,7 +64,11 @@ async function deploy({contracts, target, config}) {
 	for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
 		console.log(`Deploying resource token "${name}"...`);
 		const token = UpcityResourceToken.clone();
-		await token.new(name, symbol, TOKEN_RESERVE, tokenAuthorities)
+		await token.new(
+			name,
+			symbol,
+			bn.mul(TOKEN_RESERVE, '1e18'), 
+			tokenAuthorities)
 			.confirmed(confirmations);
 		console.log(`\tDeployed to: ${token.address.blue.bold}`);
 		tokens.push(token);
