@@ -237,4 +237,16 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const newSupply = await token.totalSupply();
 		assert.equal(newSupply, bn.sub(oldSupply, sold));
 	});
+
+	it('Raises Funded even when funded', async function() {
+		const [funder] = _.sampleSize(this.users, 1);
+		const amount = bn.mul(ONE_TOKEN, 0.5);
+		await this.eth.transfer(this.market.address, amount,
+			{from: funder});
+		const events = await this.market.Funded({fromBlock: -1, toBlock: -1});
+		assert(events.length == 1);
+		assert(events[0].name == 'Funded');
+		const {value} = events[0].args;
+		assert.equal(value, amount);
+	});
 });

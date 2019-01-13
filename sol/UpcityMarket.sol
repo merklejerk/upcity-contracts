@@ -51,6 +51,9 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 		address indexed to,
 		uint256 sold,
 		uint256 value);
+	/// @dev Raised whenever the market is funded.
+	/// @param value The amount of ether deposited.
+	event Funded(uint256 value);
 
 	/// @dev Deploy the market.
 	/// init() needs to be called before market functions will work.
@@ -63,9 +66,12 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted {
 	/// @dev Fund the markets.
 	/// Attached ether will be distributed evenly across all token markets.
 	function() external payable onlyInitialized {
-		for (uint8 i = 0; i < tokens.length; i++) {
-			Market storage market = _markets[tokens[i]];
-			market.funds = market.funds.add(msg.value/tokens.length);
+		if (msg.value > 0) {
+			for (uint8 i = 0; i < tokens.length; i++) {
+				Market storage market = _markets[tokens[i]];
+				market.funds = market.funds.add(msg.value/tokens.length);
+			}
+			emit Funded(msg.value);
 		}
 	}
 
