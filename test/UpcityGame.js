@@ -78,6 +78,15 @@ function toInt32Buffer(v) {
 	return bn.toBuffer(v, 4);
 }
 
+function toTileId(x, y) {
+	const data = Buffer.concat([
+		new Buffer.from([0x13, 0x37]),
+		toInt32Buffer(y),
+		toInt32Buffer(x)
+	]);
+	return ethjs.bufferToHex(data);
+}
+
 function getDistributions(tileInfos) {
 	const totals = _.reduce(tileInfos,
 		(t, ti) => {
@@ -139,15 +148,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		}
 	}
 
-	function toTileId(x, y) {
-		const data = Buffer.concat([
-			toInt32Buffer(x),
-			toInt32Buffer(y),
-			ethjs.toBuffer(this.game.address)
-		]);
-		return ethjs.bufferToHex(ethjs.keccak256(data)).slice(0, 16*2+2);
-	}
-
 	async function buildTower(x, y, blocks, caller=null) {
 		if (!caller)
 			caller = (await describeTile(x, y)).owner;
@@ -171,7 +171,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		this.game = this.contracts['UpcityGame'];
 		describeTile = _.bind(describeTile, this);
 		buyTokens = _.bind(buyTokens, this);
-		toTileId = _.bind(toTileId, this);
 		buildTower = _.bind(buildTower, this);
 		buyTile = _.bind(buyTile, this);
 

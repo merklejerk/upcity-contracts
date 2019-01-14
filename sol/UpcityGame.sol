@@ -27,7 +27,7 @@ contract UpcityGame is
 	/// @dev List of all tile IDs that are owned.
 	/// This gets appended to every time someone does a buy() on an empty
 	/// tile.
-	bytes16[] public tilesBought;
+	bytes10[] public tilesBought;
 	// Global block stats for each resource.
 	BlockStats[NUM_RESOURCES] private _blockStats;
 	// Tokens for each resource.
@@ -35,16 +35,16 @@ contract UpcityGame is
 	// The market for all resources.
 	IMarket private _market;
 	// Tiles by ID.
-	mapping(bytes16=>Tile) private _tiles;
+	mapping(bytes10=>Tile) private _tiles;
 
 	/// @dev Raised whenever a tile is bought.
-	event Bought(bytes16 indexed id, address indexed from, address indexed to, uint256 price);
+	event Bought(bytes10 indexed id, address indexed from, address indexed to, uint256 price);
 	/// @dev Raised whenever a tile's resources/funds are collected.
-	event Collected(bytes16 indexed id, address indexed owner);
+	event Collected(bytes10 indexed id, address indexed owner);
 	/// @dev Raised whenever credited funds (ether) are collected.
 	event CreditsCollected(address indexed from, address indexed to, uint256 amount);
 	/// @dev Raised whenever a block is built on a tile.
-	event Built(bytes16 indexed id, address indexed owner, bytes16 blocks);
+	event Built(bytes10 indexed id, address indexed owner, bytes16 blocks);
 	/// @dev Raised whenever a player is credited some funds to be collected via
 	/// collectCredits().
 	event Credited(address indexed to, uint256 amount);
@@ -82,6 +82,7 @@ contract UpcityGame is
 		Tile storage tile = _createTileAt(0, 0);
 		tile.owner = genesisPlayer;
 		tile.timesBought = 1;
+		tilesBought.push(tile.id);
 		_createNeighbors(tile.x, tile.y);
 		_init();
 	}
@@ -110,13 +111,13 @@ contract UpcityGame is
 	/// @return A slice of the tilesBought array. If the length of the
 	/// returned array is less than `count`, you've hit the end.
 	function getTilesBoughtSlice(uint32 start, uint32 count)
-			external view returns (bytes16[] memory) {
+			external view returns (bytes10[] memory) {
 
 		if (tilesBought.length == 0)
-			return new bytes16[](0);
+			return new bytes10[](0);
 		uint32 _start = $(MIN(start, uint32(tilesBought.length) - 1));
 		uint32 _count = $(MIN(count, uint32(tilesBought.length) - _start));
-		bytes16[] memory slice = new bytes16[](_count);
+		bytes10[] memory slice = new bytes10[](_count);
 		for (uint32 i = 0; i < _count; i++)
 			slice[i] = tilesBought[_start + i];
 		return slice;
@@ -147,9 +148,9 @@ contract UpcityGame is
 			returns (
 				/// @dev The id of the tile. This will be 0x0 if the tile does not
 				/// exist.
-				bytes16 id,
+				bytes10 id,
 				/// @dev The name of the tile. Zero-terminated UTF-8 string.
-				bytes12 name,
+				bytes16 name,
 				/// @dev The number of times the tile was bought.
 				uint32 timesBought,
 				/// @dev The current owner of the tile (0x0 if unowned).
@@ -266,7 +267,7 @@ contract UpcityGame is
 	/// @param x The x position of the tile.
 	/// @param y The y position of the tile.
 	/// @param name Name to give the tile (UTF-8, zero-terminated).
-	function rename(int32 x, int32 y, bytes12 name) external onlyInitialized {
+	function rename(int32 x, int32 y, bytes16 name) external onlyInitialized {
 		Tile storage tile = _getExistingTileAt(x, y);
 		// Must be owned by caller.
 		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
@@ -338,15 +339,6 @@ contract UpcityGame is
 	/// immediately.
 		_claim(tile, funds, produced);
 		emit Collected(tile.id, tile.owner);
-	}
-
-	/// @dev Convert a tile position to its ID.
-	/// The ID is deterministic, and depends on the instance of this contract.
-	/// @param x The x position of the tile.
-	/// @param y The y position of the tile.
-	/// @return A bytes16 unique ID of the tile.
-	function toTileId(int32 x, int32 y) public view returns (bytes16) {
-		return _toTileId(x, y);
 	}
 
 	/// @dev Get the build cost (in resources) to build a sequence of blocks on
@@ -451,7 +443,7 @@ contract UpcityGame is
 	/// @param y The y position of the tile.
 	/// @return The created Tile (storage) instance.
 	function _createTileAt(int32 x, int32 y) private returns (Tile storage) {
-		bytes16 id = _toTileId(x, y);
+		bytes10 id = _toTileId(x, y);
 		Tile storage tile = _tiles[id];
 		if (tile.id == 0x0) {
 			tile.id = id;
@@ -495,7 +487,7 @@ contract UpcityGame is
 	function _getExistingTileAt(int32 x, int32 y)
 			private view returns (Tile storage) {
 
-		bytes16 id = _toTileId(x, y);
+		bytes10 id = _toTileId(x, y);
 		Tile storage tile = _tiles[id];
 		require(tile.id == id, ERROR_NOT_FOUND);
 		return tile;

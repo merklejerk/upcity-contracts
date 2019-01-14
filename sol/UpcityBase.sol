@@ -47,10 +47,14 @@ contract UpcityBase {
 	// Tile data.
 	struct Tile {
 		// Deterministic ID of the tile. Will be 0x0 if tile does not exist.
-		bytes16 id;
+		bytes10 id;
 		// Right-aligned, packed representation of blocks,
 		// where 0x..FF is empty.
 		bytes16 blocks;
+		// The height of the tower on the tile (length of blocks).
+		uint8 height;
+		// NUM_NEIGHBORS + the height of each neighbor's tower.
+		uint8 neighborCloutsTotal;
 		// How many times the tile has been bought. Always >= 1.
 		uint32 timesBought;
 		// When the tile was last collected.
@@ -59,14 +63,8 @@ contract UpcityBase {
 		int32 x;
 		// The y coordinate of the tile.
 		int32 y;
-		// The height of the tower on the tile (length of blocks).
-		uint8 height;
-		// NUM_NEIGHBORS + the height of each neighbor's tower.
-		uint8 neighborCloutsTotal;
 		// The name of the tile.
-		bytes12 name;
-		// The current owner of the tile.
-		address owner;
+		bytes16 name;
 		// The "base" price of a tile, NOT including neighborhood bonus,
 		// resource costs, and seasonal bonus. This goes up every time a
 		// tile is bought.
@@ -77,6 +75,8 @@ contract UpcityBase {
 		// The aggregated shared ether from neighbor tiles. after they
 		// do a collect().
 		uint256 sharedFunds;
+		// The current owner of the tile.
+		address owner;
 	}
 
 	// Global metrics, for a specific resource;
@@ -160,8 +160,9 @@ contract UpcityBase {
 	}
 
 	/// @dev Given a tile coordinate, return the tile id.
-	function _toTileId(int32 x, int32 y) internal view returns (bytes16) {
-		return bytes16(keccak256(abi.encodePacked(x, y, address(this))));
+	function _toTileId(int32 x, int32 y) internal pure returns (bytes10) {
+		return bytes10($$(hex(0x1337 << (8*8)))) |
+			bytes10(uint80((int64(y) << (8*4)) | (int64(x) & uint32(-1))));
 	}
 
 	/// @dev Check if a block ID number is valid.
@@ -196,7 +197,8 @@ contract UpcityBase {
 	/// @param tile The tile to check.
 	/// @return true if tile is in season.
 	function _isTileInSeason(Tile storage tile) internal view returns (bool) {
-		return uint128(tile.id) % NUM_SEASONS == _getSeason();
+		bytes32 hash = keccak256(abi.encodePacked(address(this), tile.id));
+		return uint256(hash) % NUM_SEASONS == _getSeason();
 	}
 
 	/// @dev Estimate the sqrt of an integer n, returned in ppm, using small
