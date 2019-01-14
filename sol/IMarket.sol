@@ -5,4 +5,6 @@ pragma solidity ^0.5;
 interface IMarket {
 
 	function getPrice(address resource) external view returns (uint256);
+	function mint(address resource, address to, uint256 amount) external;
+	function burn(address resource, address from, uint256 amount) external;
 }

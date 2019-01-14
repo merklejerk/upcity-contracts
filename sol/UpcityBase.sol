@@ -1,13 +1,11 @@
 pragma solidity ^0.5;
 
-// #def DECIMALS 18
-
 // #def ONE_DAY 24 * 60 * 60
 
 // #def SEASON_DURATION \
 //		uint64((365.25 * ONE_DAY) / NUM_SEASONS / SEASON_FREQUENCY)
 
-// #def ONE_TOKEN 10**DECIMALS
+// #def ONE_TOKEN (1 ether)
 
 // #def NEIGHBOR_OFFSET(idx) (((int32(idx)%3)-1), (1-int32(idx)/2))
 
@@ -33,6 +31,8 @@ pragma solidity ^0.5;
 // #def MAX_BLOCK_VALUE NUM_RESOURCES-1
 
 // #def MAX(a, b) ((a) >= (b) ? (a) : (b))
+
+// #def MIN(a, b) ((a) <= (b) ? (a) : (b))
 
 // #if TEST
 // #def BLOCKTIME _blockTime
@@ -95,8 +95,6 @@ contract UpcityBase {
 	// solhint-disable
 	// Zero address (0x0).
 	address internal constant ZERO_ADDRESS = address(0x0);
-	// Number of decimals for all resource tokens and ether (18).
-	uint8 internal constant DECIMALS = $$(DECIMALS);
 	// 100%, or 1.0, in parts per million.
 	uint64 internal constant PPM_ONE = $$(AS_UINT64(PPM_ONE));
 	// The number of wei in one token (10**18).

@@ -38,18 +38,18 @@ contract UpcityResourceToken is ERC20, Restricted, Nonpayable {
 	}
 
 	/// @dev Mint new tokens and give them to an address.
-	/// Only the authority may call this.
-	function mint(address to, uint256 amt)
-			public onlyAuthority {
-
+	/// Only an authority may call this.
+	/// @param to The owner of the new tokens.
+	/// @param amt The number of tokens to mint.
+	function mint(address to, uint256 amt) external onlyAuthority {
 		_mint(to, amt);
 	}
 
 	/// @dev Burn tokens held by an address.
-	/// Only the authority may call this.
-	function burn(address from, uint256 amt)
-			public onlyAuthority {
-
+	/// Only an authority may call this.
+	/// @param from The owner whose tokens will be burned.
+	/// @param amt The number of tokens to burn.
+	function burn(address from, uint256 amt) external onlyAuthority {
 		require(amt > 0, ERROR_INVALID);
 		require(from != ZERO_ADDRESS && from != address(this), ERROR_INVALID);
 		require(balanceOf(from) >= amt, ERROR_INSUFFICIENT);

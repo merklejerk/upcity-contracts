@@ -10,19 +10,21 @@ const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
 const RESERVE = ONE_TOKEN;
 const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
 const CONNECTOR_WEIGHT = 0.66;
+const ONE_DAY = 60 * 60 * 24;
 const NUM_RESOURCES = constants.NUM_RESOURCES;
 const RESOURCE_NAMES = constants.RESOURCE_NAMES;
 const RESOURCE_SYMBOLS = constants.RESOURCE_SYMBOLS;
 
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
+
 	before(async function() {
 		_.assign(this, await testbed({
 			contracts: ['UpcityResourceToken', 'UpcityMarket']}));
+		this.authority = this.accounts[0];
 		this.users = _.slice(this.accounts, 1);
 		this.market = this.contracts['UpcityMarket'];
-	});
 
-	before(async function() {
+		// Deploy the market and tokens.
 		await this.market.new(Math.round(1e6 * CONNECTOR_WEIGHT));
 		this.tokens = [];
 		for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
@@ -31,11 +33,12 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				name,
 				symbol,
 				RESERVE,
-				[this.market.address, this.accounts[0]]);
+				[this.market.address]);
 			this.tokens.push(token);
 		}
 		await this.market.init(
 			_.map(this.tokens, t => t.address),
+			[this.authority],
 			{value: MARKET_DEPOSIT});
 	});
 
@@ -88,7 +91,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const [seller] = _.sampleSize(this.users, 1);
 		const token = _.sample(this.tokens);
 		const amount = bn.mul(ONE_TOKEN, 0.5);
-		await token.mint(seller, amount);
+		await this.market.mint(token.address, seller, amount);
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
@@ -108,7 +111,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const amount = 0;
 		const balance = bn.mul(ONE_TOKEN, 1);
-		await token.mint(seller, balance);
+		await this.market.mint(token.address, seller, balance);
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
@@ -120,7 +123,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const amount = bn.add(balance, 1);
-		await token.mint(seller, balance);
+		await this.market.mint(token.address, seller, balance);
 		await this.market.__uninitialize();
 		assert.rejects(this.market.sell(
 			token.address, seller, amount,
@@ -172,7 +175,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const initialEthBalance = await this.eth.getBalance(seller);
-		await token.mint(seller, balance);
+		await this.market.mint(token.address, seller, balance);
 		const tx = await this.market.sell(
 			token.address, balance, seller,
 			{from: seller});
@@ -191,7 +194,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const amount = bn.mul(balance, 0.1);
 		const initialEthBalance = await this.eth.getBalance(seller);
-		await token.mint(seller, balance);
+		await this.market.mint(token.address, seller, balance);
 		const tx = await this.market.sell(
 			token.address, amount, seller,
 			{from: seller});
@@ -210,7 +213,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const amount = bn.mul(balance, 0.1);
 		const initialEthBalance = await this.eth.getBalance(dst);
-		await token.mint(seller, balance);
+		await this.market.mint(token.address, seller, balance);
 		const tx = await this.market.sell(
 			token.address, amount, dst,
 			{from: seller});
@@ -228,7 +231,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const token = _.sample(this.tokens);
 		const balance = bn.mul(ONE_TOKEN, 1);
 		const amount = bn.mul(balance, 0.1);
-		await token.mint(seller, balance);
+		await this.market.mint(token.address, seller, balance);
 		const oldSupply = await token.totalSupply();
 		const tx = await this.market.sell(
 			token.address, amount, seller,
@@ -248,5 +251,92 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert(events[0].name == 'Funded');
 		const {value} = events[0].args;
 		assert.equal(value, amount);
+	});
+
+	it('DOES NOT update yesterday\'s price after < a day has passed', async function() {
+		const [user] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.mint(token.address, user, ONE_TOKEN);
+		const {priceYesterday: prevYP} =
+			await this.market.getState(token.address);
+		await this.market.__advanceTime(ONE_DAY-1);
+		await this.market.buy(token.address, user,
+			{value: ONE_TOKEN, from: user});
+		const {priceYesterday: newYP} =
+			await this.market.getState(token.address);
+		assert.equal(prevYP, newYP);
+	});
+
+	it('Buy updates yesterday\'s price after a day has passed', async function() {
+		const [user] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.mint(token.address, user, ONE_TOKEN);
+		const {priceYesterday: prevYP} =
+			await this.market.getState(token.address);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.buy(token.address, user,
+			{value: ONE_TOKEN, from: user});
+		const {priceYesterday: newYP} =
+			await this.market.getState(token.address);
+		assert.notEqual(prevYP, newYP);
+	});
+
+	it('Sell updates yesterday\'s price after a day has passed', async function() {
+		const [user] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.mint(token.address, user, ONE_TOKEN);
+		const {priceYesterday: prevYP} =
+			await this.market.getState(token.address);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.sell(token.address, bn.mul(ONE_TOKEN, 0.5), user,
+			{from: user});
+		const {priceYesterday: newYP} =
+			await this.market.getState(token.address);
+		assert.notEqual(prevYP, newYP);
+	});
+
+	it('mint updates yesterday\'s price after a day has passed', async function() {
+		const [user] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.mint(token.address, user, ONE_TOKEN);
+		const {priceYesterday: prevYP} =
+			await this.market.getState(token.address);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.mint(token.address, user, ONE_TOKEN);
+		const {priceYesterday: newYP} =
+			await this.market.getState(token.address);
+		assert.notEqual(prevYP, newYP);
+	});
+
+	it('burn updates yesterday\'s price after a day has passed', async function() {
+		const [user] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.mint(token.address, user, ONE_TOKEN);
+		const {priceYesterday: prevYP} =
+			await this.market.getState(token.address);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.burn(token.address, user, bn.mul(ONE_TOKEN, 0.5));
+		const {priceYesterday: newYP} =
+			await this.market.getState(token.address);
+		assert.notEqual(prevYP, newYP);
+	});
+
+	it('funding updates yesterday\'s price after a day has passed', async function() {
+		const [user] = _.sampleSize(this.users, 1);
+		const token = _.sample(this.tokens);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.market.mint(token.address, user, ONE_TOKEN);
+		const {priceYesterday: prevYP} =
+			await this.market.getState(token.address);
+		await this.market.__advanceTime(ONE_DAY);
+		await this.eth.transfer(this.market.address, ONE_TOKEN, {from: user});
+		const {priceYesterday: newYP} =
+			await this.market.getState(token.address);
+		assert.notEqual(prevYP, newYP);
 	});
 });

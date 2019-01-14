@@ -54,11 +54,6 @@ async function deploy({contracts, target, config}) {
 	console.log('Deploying game...');
 	await game.new().confirmed(confirmations);
 	console.log(`\tDeployed to: ${game.address.blue.bold}`);
-	// Deploy and init the tokens.
-	const tokenAuthorities = [
-		game.address,
-		market.address
-	];
 	// Deploy the tokens.
 	const tokens = [];
 	for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
@@ -68,7 +63,7 @@ async function deploy({contracts, target, config}) {
 			name,
 			symbol,
 			bn.mul(TOKEN_RESERVE, '1e18'),
-			tokenAuthorities)
+			[market.address])
 			.confirmed(confirmations);
 		console.log(`\tDeployed to: ${token.address.blue.bold}`);
 		tokens.push(token);
@@ -78,6 +73,7 @@ async function deploy({contracts, target, config}) {
 	console.log('Initializing the market...');
 	await market.init(
 		tokenAddresses,
+		[game.address],
 		{value: bn.mul(MARKET_DEPOSIT, '1e18')}).confirmed(confirmations);
 	// Init the game.
 	console.log('Initializing the game...');

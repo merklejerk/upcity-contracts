@@ -24,6 +24,10 @@ contract UpcityGame is
 	/// funds paid to buy unowned tiles.
 	/// An authority may call collectFees() to withdraw these fees.
 	uint256 public fees = 0;
+	/// @dev List of all tile IDs that are owned.
+	/// This gets appended to every time someone does a buy() on an empty
+	/// tile.
+	bytes16[] public tilesBought;
 	// Global block stats for each resource.
 	BlockStats[NUM_RESOURCES] private _blockStats;
 	// Tokens for each resource.
@@ -98,6 +102,24 @@ contract UpcityGame is
 		scores[$$(RES)] = _blockStats[$$(RES)].score;
 		productions[$$(RES)] = _blockStats[$$(RES)].production;
 		// #done
+	}
+
+	/// @dev Get a slice of the tilesBought array.
+	/// @param start The start index.
+	/// @param count The maximum number of elements to return.
+	/// @return A slice of the tilesBought array. If the length of the
+	/// returned array is less than `count`, you've hit the end.
+	function getTilesBoughtSlice(uint32 start, uint32 count)
+			external view returns (bytes16[] memory) {
+
+		if (tilesBought.length == 0)
+			return new bytes16[](0);
+		uint32 _start = $(MIN(start, uint32(tilesBought.length) - 1));
+		uint32 _count = $(MIN(count, uint32(tilesBought.length) - _start));
+		bytes16[] memory slice = new bytes16[](_count);
+		for (uint32 i = 0; i < _count; i++)
+			slice[i] = tilesBought[_start + i];
+		return slice;
 	}
 
 	/// @dev Gets the resource and ether balance of a player.
@@ -193,6 +215,10 @@ contract UpcityGame is
 		_createNeighbors(tile.x, tile.y);
 		// Share with neighbors.
 		_share(tile, price, $$(UINT256_ARRAY(NUM_RESOURCES, 0)));
+		// If this tile was previously unowned, append it to the tilesBought
+		// list.
+		if (oldOwner == ZERO_ADDRESS)
+			tilesBought.push(tile.id);
 		// Pay previous owner.
 		_creditTo(oldOwner, _toTaxed(price));
 		// Refund any overpayment.
@@ -663,7 +689,7 @@ contract UpcityGame is
 			address recipient, uint8 resource, uint256 amount) private {
 
 		if (amount > 0)
-			_tokens[resource].mint(recipient, amount);
+			_market.mint(address(_tokens[resource]), recipient, amount);
 	}
 
 	/// @dev Burn some resource tokens from someone.
@@ -676,7 +702,7 @@ contract UpcityGame is
 		assert(spender != ZERO_ADDRESS);
 		// #for N in range(NUM_RESOURCES)
 		if (resources[$(N)] > 0)
-			_tokens[$(N)].burn(spender, resources[$(N)]);
+			_market.burn(address(_tokens[$(N)]), spender, resources[$(N)]);
 		// #done
 	}
 

@@ -180,20 +180,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.new(cw);
 		const tx = await this.game.new();
 		// Deploy and init the tokens.
-		const tokenAuthorities = [
-			this.game.address,
-			this.market.address,
-			this.accounts[0]
-		];
 		this.tokens = [];
 		for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
 			const token = this.contracts['UpcityResourceToken'].clone();
-			await token.new(name, symbol, RESERVE, tokenAuthorities);
+			await token.new(name, symbol, RESERVE, [this.market.address]);
 			this.tokens.push(token);
 		}
 		// Init the market.
 		const tokens = _.map(this.tokens, t => t.address);
-		await this.market.init(tokens, {value: MARKET_DEPOSIT});
+		await this.market.init(
+			tokens,
+			[this.game.address],
+			{value: MARKET_DEPOSIT});
 		//  Init the game.
 		await this.game.init(
 			tokens,
@@ -452,6 +450,24 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				{from: tile.owner, to: buyer, price: tile.price}));
 			tile = await describeTile(x, y);
 			assert.equal(tile.owner, buyer);
+		});
+
+		it('buying an edge tile extends tilesBought', async function() {
+			const [buyer] = _.sampleSize(this.users, 1);
+			const [x, y] = _.sample(NEIGHBOR_OFFSETS);
+			const oldSlice = await this.game.getTilesBoughtSlice(0, 300);
+			await buyTile(x, y, buyer);
+			const slice = await this.game.getTilesBoughtSlice(0, 300);
+			assert(slice.length - oldSlice.length == 1);
+		});
+
+		it('buying an innner tile does NOT extend tilesBought', async function() {
+			const [buyer] = _.sampleSize(this.users, 1);
+			const [x, y] = [0, 0];
+			const oldSlice = await this.game.getTilesBoughtSlice(0, 300);
+			await buyTile(x, y, buyer);
+			const slice = await this.game.getTilesBoughtSlice(0, 300);
+			assert.equal(slice.length, oldSlice.length);
 		});
 
 		it('cannot buy a tile with insufficient funds', async function() {
