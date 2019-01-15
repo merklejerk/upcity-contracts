@@ -41,7 +41,7 @@ function encodeBlocks(blocks) {
 }
 
 function encodeName(name) {
-	return '0x'+ethjs.setLengthRight(Buffer.from(name), 12).toString('hex');
+	return '0x'+ethjs.setLengthRight(Buffer.from(name), 16).toString('hex');
 }
 
 function decodeName(encoded) {
@@ -58,14 +58,15 @@ function unpackDescription(r) {
 	return {
 		id: r.id,
 		name: decodeName(r.name),
-		timesBought: bn.toNumber(r.timesBought),
 		lastTouchTime: bn.toNumber(r.lastTouchTime),
+		timesBought: bn.toNumber(r.timesBought),
 		owner: r.owner,
 		blocks: decodeBlocks(r.blocks),
 		price: r.price,
-		resources: r.resources,
+		sharedResources: r.sharedResources,
 		funds: r.funds,
-		inSeason: r.inSeason
+		inSeason: r.inSeason,
+		scores: r.scores
 	};
 }
 
@@ -90,14 +91,14 @@ function toTileId(x, y) {
 function getDistributions(tileInfos) {
 	const totals = _.reduce(tileInfos,
 		(t, ti) => {
-			const balances = [...ti.resources, ti.funds];
+			const balances = [...ti.sharedResources, ti.funds];
 			return _.map(_.zip(balances, t), ([a, b]) => bn.add(a, b));
 		},
 		_.times(NUM_RESOURCES+1, i => '0')
 	);
 	return _.map(tileInfos,
 		ti => {
-			const balances = [...ti.resources, ti.funds];
+			const balances = [...ti.sharedResources, ti.funds];
 			return bn.dp(bn.div(
 				bn.sum(_.map(_.zip(balances, totals),
 					([a, b]) => bn.div(a, b))), balances.length), 2);
@@ -835,10 +836,10 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const tile = await describeTile(x, y);
 			assert(bn.eq(tile.funds, 0));
 			for (let res = 0; res < NUM_RESOURCES; res++)
-				assert(bn.eq(tile.resources[res], 0));
+				assert(bn.eq(tile.sharedResources[res], 0));
 		});
 
-		it('collect clears generated resources', async function() {
+		it('collect updates lastTouchTime', async function() {
 			const owner = this.genesisPlayer;
 			const [x, y] = [0, 0];
 			const funds = 100;
@@ -848,8 +849,8 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const tx = await this.game.collect(x, y, {from: owner});
 			assert(tx.findEvent('Collected', {id: toTileId(x, y), owner: owner}));
 			const tile = await describeTile(x, y);
-			for (let res = 0; res < NUM_RESOURCES; res++)
-				assert(bn.eq(tile.resources[res], 0));
+			const now = await this.game.__blockTime();
+			assert.equal(tile.lastTouchTime, bn.toNumber(now));
 		});
 
 		it('collect does not credit unowned neighbor, instead goes to fees', async function() {
@@ -863,7 +864,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const tx = await this.game.collect(x, y, {from: owner});
 			const neighbor = await describeTile(..._.sample(NEIGHBOR_OFFSETS));
 			for (let res = 0; res < NUM_RESOURCES; res++)
-				assert.equal(neighbor.resources[res], '0');
+				assert.equal(neighbor.sharedResources[res], '0');
 			assert.equal(neighbor.funds, '0');
 			assert(bn.gt(await this.game.fees(), '0'));
 		});

@@ -45,6 +45,8 @@ contract UpcityGame is
 	event CreditsCollected(address indexed from, address indexed to, uint256 amount);
 	/// @dev Raised whenever a block is built on a tile.
 	event Built(bytes10 indexed id, address indexed owner, bytes16 blocks);
+	/// @dev Raised whenever a tile is renamed.
+	event Renamed(bytes10 indexed id, bytes16 name);
 	/// @dev Raised whenever a player is credited some funds to be collected via
 	/// collectCredits().
 	event Credited(address indexed to, uint256 amount);
@@ -160,15 +162,21 @@ contract UpcityGame is
 				bytes16 blocks,
 				/// @dev The current price of the tile.
 				uint256 price,
-				/// @dev The number of each resource available to collect()
-				/// (including tax).
-				uint256[NUM_RESOURCES] memory resources,
+				/// @dev The number of shared resource available to collect()
+				/// (untaxed).
+				uint256[NUM_RESOURCES] memory sharedResources,
 				/// @dev The amount ether available to collect()
 				/// (including tax).
 				uint256 funds,
+				/// @dev The aggregated yield scores for each resource for this
+				/// tile.
+				uint64[NUM_RESOURCES] memory scores,
 				/// @dev Whether or not this tile is in season.
 				/// Tiles in season yield more resources and have higher prices.
-				bool inSeason) {
+				bool inSeason,
+				/// @dev The last time the tile was touched (collected),
+				// in unix time.
+				uint64 lastTouchTime) {
 
 		Tile storage tile = _getTileAt(x, y);
 		id = tile.id;
@@ -178,17 +186,22 @@ contract UpcityGame is
 		blocks = tile.blocks;
 		if (id != 0x0) {
 			price = _getTilePrice(tile);
-			resources = _getTileYield(tile);
-			inSeason = _isTileInSeason(tile);
+			sharedResources = tile.sharedResources;
 			funds = _toTaxed(tile.sharedFunds);
+			scores = tile.scores;
+			inSeason = _isTileInSeason(tile);
+			lastTouchTime = tile.lastTouchTime;
 		}
 		else {
+			// Tile does not exist.
 			assert(owner == address(0x0));
 			name = 0x0;
 			price = 0;
-			resources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
-			inSeason = false;
+			sharedResources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
 			funds = 0;
+			scores = $$(UINT64_ARRAY(NUM_RESOURCES, 0));
+			inSeason = false;
+			lastTouchTime = 0;
 		}
 	}
 
@@ -248,17 +261,13 @@ contract UpcityGame is
 		require(count > 0, ERROR_INVALID);
 		// Building beyond the maximum height is not allowed.
 		require(_isValidHeight(tile.height + count), ERROR_MAX_HEIGHT);
-		// Burn the costs.
-		_burn(msg.sender, cost);
+		_incrementTileScores(tile, blocks, count);
+		_incrementNeighborCloutTotals(tile, count);
+		_incrementBlockStats(blocks, count);
 		tile.blocks = _assignBlocks(tile.blocks, blocks, tile.height, count);
 		tile.height += count;
-		// Increase clout total for each neighbor.
-		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
-			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
-			Tile storage neighbor = _getTileAt(tile.x + ox, tile.y + oy);
-			neighbor.neighborCloutsTotal += count;
-		}
-		_incrementBlockStats(blocks, count);
+		// Burn the costs.
+		_burn(msg.sender, cost);
 		emit Built(tile.id, tile.owner, tile.blocks);
 	}
 
@@ -272,6 +281,7 @@ contract UpcityGame is
 		// Must be owned by caller.
 		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
 		tile.name = name;
+		emit Renamed(tile.id, name);
 	}
 
 	/// @dev Transfer fees (ether) collected to an address.
@@ -322,7 +332,7 @@ contract UpcityGame is
 		if (tile.owner == ZERO_ADDRESS)
 			return;
 
-		uint256[NUM_RESOURCES] memory produced = _getTileYield(tile);
+		uint256[NUM_RESOURCES] memory produced = _getTileYield(tile, $(BLOCKTIME));
 		uint256 funds = tile.sharedFunds;
 
 		tile.lastTouchTime = $(BLOCKTIME);
@@ -331,12 +341,6 @@ contract UpcityGame is
 
 		// Share to neighbors.
 		_share(tile, funds, produced);
-	/// @dev Claims funds and resources from a tile to its owner.
-	/// The amount minted/transfered/credited will be minus the tax.
-	/// Resources are immediately minted to the tile owner.
-	/// Funds (ether) are credited (pull pattern) to the tile owner unless
-	/// the caller is also the tile owner, in which case it will be transfered
-	/// immediately.
 		_claim(tile, funds, produced);
 		emit Collected(tile.id, tile.owner);
 	}
@@ -388,33 +392,57 @@ contract UpcityGame is
 		return (cost, count);
 	}
 
-	/// @dev Get the amount resources held by a tile at the current time.
+	/// @dev Update a tile's resource scores given new blocks to append.
+	/// @param tile The tile.
+	/// @param blocks the blocks to append.
+	function _incrementTileScores(Tile storage tile, bytes16 blocks, uint8 count)
+			private {
+
+		for (uint8 h = 0; h < count; h++) {
+			// Pop each block off the tower.
+			uint8 b = uint8(uint128(blocks));
+			blocks = blocks >> 8;
+			tile.scores[b] += BLOCK_HEIGHT_BONUS[tile.height + h];
+		}
+	}
+
+	/// @dev Update the clout totals for each neighbor of a given tile.
+	/// @param center The center tile.
+	/// @param amount The extra clout (height) the center tile gained .
+	function _incrementNeighborCloutTotals(Tile storage center, uint8 amount)
+			private {
+
+		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
+			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
+			Tile storage neighbor = _getTileAt(center.x + ox, center.y + oy);
+			neighbor.neighborCloutsTotal += amount;
+		}
+	}
+
+	/// @dev Get the amount resources held by a tile at a time (in the future).
 	/// This will include shared resources from neighboring tiles.
 	/// The resources held by a tile is an aggregate of the production rate
 	/// of the blocks on it (multiplied by a seasonal bonus if the tile is in
 	/// season) plus resources shared from neighboring tiles.
 	/// @param tile The tile info structure.
+	/// @param when The time when to evaluate the yield.
 	/// @return The amount of each resource produced.
-	function _getTileYield(Tile storage tile)
+	function _getTileYield(Tile storage tile, uint64 when)
 			private view returns (uint256[NUM_RESOURCES] memory produced) {
 
 		assert(tile.id != 0x0);
-		require($(BLOCKTIME) >= tile.lastTouchTime, ERROR_TIME_TRAVEL);
+		require(when >= tile.lastTouchTime, ERROR_TIME_TRAVEL);
 		uint64 seasonBonus = _isTileInSeason(tile) ? SEASON_YIELD_BONUS : PPM_ONE;
-		uint64 dt = $(BLOCKTIME) - tile.lastTouchTime;
+		uint64 dt = when - tile.lastTouchTime;
 		// Geneerate resources on top of what's been shared to this tile.
 		produced = tile.sharedResources;
-		bytes16 blocks = tile.blocks;
-		for (uint8 height = 0; height < tile.height; height++) {
-			// Pop each block off the tower.
-			uint8 b = uint8(uint128(blocks));
-			blocks = blocks >> 8;
+		for (uint8 b = 0; b < NUM_RESOURCES; b++) {
 			uint256 amt = ONE_TOKEN * _blockStats[b].production;
 			amt *= dt;
-			amt *= BLOCK_HEIGHT_BONUS[height];
+			amt *= tile.scores[b];
 			amt *= seasonBonus;
-			amt /= (_blockStats[b].score) * $$(ONE_DAY * PPM_ONE**3);
-			produced[b] = produced[b].add(amt);
+			amt /= $(MAX(_blockStats[b].score, PPM_ONE)) * $$(ONE_DAY * PPM_ONE**2);
+			produced[b] += amt;
 		}
 	}
 
@@ -450,11 +478,11 @@ contract UpcityGame is
 			tile.x = x;
 			tile.y = y;
 			tile.blocks = EMPTY_BLOCKS;
+			tile.basePrice = MINIMUM_TILE_PRICE;
 			// No need to iterate over neighbors to get accurate clouts since we know
 			// tiles are only created when an unowned edge tile is bought, so its
 			// only existing neighbor should be empty.
 			tile.neighborCloutsTotal = NUM_NEIGHBORS;
-			tile.basePrice = MINIMUM_TILE_PRICE;
 		}
 		return tile;
 	}
@@ -548,7 +576,8 @@ contract UpcityGame is
 					neighbor.sharedResources[$$(RES)].add(
 						(clout * sharedResources[$$(RES)]) / PPM_ONE);
 				// #done
-				neighbor.sharedFunds = neighbor.sharedFunds.add(sharedFunds);
+				neighbor.sharedFunds = neighbor.sharedFunds.add(
+					clout * sharedFunds / PPM_ONE);
 			} else {
 				// If the tile is unowned, keep the funds as fees.
 				fees = fees.add(
@@ -749,6 +778,14 @@ contract UpcityGame is
 
 	function __fundPlayer(address to) external payable {
 		credits[to] = credits[to].add(msg.value);
+	}
+
+	function __getYield(int32 x, int32 y) external view returns
+			(uint256[NUM_RESOURCES] memory resources, uint256 funds) {
+
+		Tile storage tile = _getExistingTileAt(x, y);
+		resources = _getTileYield(tile, $(BLOCKTIME));
+		funds = tile.sharedFunds;
 	}
 
 	// solhint-enable

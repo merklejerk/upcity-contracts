@@ -35,7 +35,7 @@ pragma solidity ^0.5;
 // #def MIN(a, b) ((a) <= (b) ? (a) : (b))
 
 // #if TEST
-// #def BLOCKTIME _blockTime
+// #def BLOCKTIME __blockTime
 // #else
 // #def BLOCKTIME uint64(block.timestamp)
 // #endif
@@ -75,6 +75,8 @@ contract UpcityBase {
 		// The aggregated shared ether from neighbor tiles. after they
 		// do a collect().
 		uint256 sharedFunds;
+		// The aggregate scores for each resource on this tile.
+		uint64[NUM_RESOURCES] scores;
 		// The current owner of the tile.
 		address owner;
 	}
@@ -100,7 +102,7 @@ contract UpcityBase {
 	// The number of wei in one token (10**18).
 	uint256 internal constant ONE_TOKEN = $$(ONE_TOKEN);
 	// The number of seconds in one day.
-	uint256 internal constant ONE_DAY = $$(ONE_DAY);
+	uint64 internal constant ONE_DAY = $$(ONE_DAY);
 	// The number of resource types.
 	uint8 internal constant NUM_RESOURCES = $$(NUM_RESOURCES);
 	// The number of neighbors for each tile.
@@ -110,7 +112,7 @@ contract UpcityBase {
 	// Packed representation of an empty tower.
 	bytes16 internal constant EMPTY_BLOCKS = $$(hex(2**(8*MAX_HEIGHT)-1));
 	// The ratio of collected resources to share with neighbors, in ppm.
-	uint64 internal constant TAX_RATE = $$(TO_PPM(1/NUM_NEIGHBORS));
+	uint64 internal constant TAX_RATE = $$(TO_PPM(TAX_RATE));
 	// The minimum tile price.
 	uint256 internal constant MINIMUM_TILE_PRICE = $$(uint256(ONE_TOKEN * MINIMUM_TILE_PRICE));
 	// How much to increase the base tile price every time it's bought, in ppm.
@@ -140,7 +142,7 @@ contract UpcityBase {
 	// The linear rate at which each block's costs increase with the total
 	// blocks built, in ppm.
 	uint64[NUM_RESOURCES] internal RESOURCE_ALPHAS =
-		$$(map([0.05, 0.25, 0.66], TO_PPM));
+		$$(map([0.05, 0.33, 0.66], TO_PPM));
 	// Recipes for each block type, as whole tokens.
 	uint256[NUM_RESOURCES][NUM_RESOURCES] internal RECIPES = [
 		[3, 1, 1],
@@ -162,7 +164,8 @@ contract UpcityBase {
 	/// @dev Given a tile coordinate, return the tile id.
 	function _toTileId(int32 x, int32 y) internal pure returns (bytes10) {
 		return bytes10($$(hex(0x1337 << (8*8)))) |
-			bytes10(uint80((int64(y) << (8*4)) | (int64(x) & uint32(-1))));
+			bytes10(uint80(((uint64(y) & uint32(-1)) << (8*4)) |
+				(uint64(x) & uint32(-1))));
 	}
 
 	/// @dev Check if a block ID number is valid.
@@ -228,16 +231,16 @@ contract UpcityBase {
 	/* Test functions/properties. *******************************************/
 
 	// The current blocktime.
-	uint64 public _blockTime = uint64(block.timestamp);
+	uint64 public __blockTime = uint64(block.timestamp);
 
 	// Set the current blocktime.
 	function __setBlockTime(uint64 t) public {
-		_blockTime = t;
+		__blockTime = t;
 	}
 
 	// Advance the current blocktime.
 	function __advanceTime(uint64 dt) public {
-		_blockTime += dt;
+		__blockTime += dt;
 	}
 	// #endif
 }
