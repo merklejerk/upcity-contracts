@@ -1,7 +1,6 @@
 pragma solidity ^0.5;
 
 import './base/openzeppelin/math/SafeMath.sol';
-import './IResourceToken.sol';
 import './IMarket.sol';
 import './Uninitialized.sol';
 import './Restricted.sol';
@@ -30,8 +29,8 @@ contract UpcityGame is
 	bytes10[] public tilesBought;
 	// Global block stats for each resource.
 	BlockStats[NUM_RESOURCES] private _blockStats;
-	// Tokens for each resource.
-	IResourceToken[NUM_RESOURCES] private _tokens;
+	// Address for each resource token.
+	address[NUM_RESOURCES] private _tokens;
 	// The market for all resources.
 	IMarket private _market;
 	// Tiles by ID.
@@ -77,7 +76,7 @@ contract UpcityGame is
 		for (uint256 i = 0; i < authorities.length; i++)
 			isAuthority[authorities[i]] = true;
 		for (uint256 i = 0; i < NUM_RESOURCES; i++)
-			_tokens[i] = IResourceToken(tokens[i]);
+			_tokens[i] = tokens[i];
 		_market = IMarket(market);
 
 		// Create the genesis tile and its neighbors.
@@ -123,23 +122,6 @@ contract UpcityGame is
 		for (uint32 i = 0; i < _count; i++)
 			slice[i] = tilesBought[_start + i];
 		return slice;
-	}
-
-	/// @dev Gets the resource and ether balance of a player.
-	/// Note that this does not include credits (see 'credits' field).
-	/// @param player The player's address.
-	/// @return A tuple of:
-	/// ether balance,
-	/// array of balance for each resource.
-	function getPlayerBalance(address player)
-			external view returns (
-				uint256 funds,
-				uint256[NUM_RESOURCES] memory resources) {
-
-		funds = player.balance;
-		// #for RES in range(NUM_RESOURCES)
-		resources[$$(RES)] = _tokens[$$(RES)].balanceOf(player);
-		// #done
 	}
 
 	/// @dev Get detailed information about a tile.
@@ -267,7 +249,7 @@ contract UpcityGame is
 		tile.blocks = _assignBlocks(tile.blocks, blocks, tile.height, count);
 		tile.height += count;
 		// Burn the costs.
-		_burn(msg.sender, cost);
+		_market.burn(msg.sender, cost);
 		emit Built(tile.id, tile.owner, tile.blocks);
 	}
 
@@ -602,13 +584,13 @@ contract UpcityGame is
 			private {
 
 		require(tile.owner != ZERO_ADDRESS, ERROR_INVALID);
-		// #for RES in range(NUM_RESOURCES)
-		_mintTo(tile.owner, $$(RES), _toTaxed(resources[$$(RES)]));
-		// #done
-		// If caller is not the owner, only credit funds.
+		// Mint the taxed amount of resources held to the tile owner.
+		_market.mint(tile.owner,
+			$$(map(range(NUM_RESOURCES), (I) => `_toTaxed(resources[${I}])`)));
+		// If caller is not the owner, only credit ether.
 		if (tile.owner != msg.sender)
 			_creditTo(tile.owner, _toTaxed(funds));
-		else // Otherwise try to transfer the funds synchronously.
+		else // Otherwise try to transfer the ether synchronously.
 			_transferTo(tile.owner, _toTaxed(funds));
 	}
 
@@ -620,7 +602,7 @@ contract UpcityGame is
 	function _getTilePrice(Tile storage tile) private view
 			returns (uint256 price) {
 
-		uint256[NUM_RESOURCES] memory marketPrices = _getMarketPrices();
+		uint256[NUM_RESOURCES] memory marketPrices = _market.getPrices();
 		price = _getIsolatedTilePrice(tile, marketPrices);
 		/// Get the aggregate of neighbor prices.
 		uint256 neighborPrices = 0;
@@ -700,41 +682,6 @@ contract UpcityGame is
 			credits[to] = credits[to].add(amount);
 			emit Credited(to, amount);
 		}
-	}
-
-	/// @dev Mint some resource tokens to someone.
-	/// @param recipient The recipient.
-	/// @param resource The resource ID number.
-	/// @param amount The amount of tokens to mint (in wei).
-	function _mintTo(
-			address recipient, uint8 resource, uint256 amount) private {
-
-		if (amount > 0)
-			_market.mint(address(_tokens[resource]), recipient, amount);
-	}
-
-	/// @dev Burn some resource tokens from someone.
-	/// @param spender The owner of the tokens.
-	/// @param resources Amount of each resource to burn.
-	function _burn(
-			address spender,
-			uint256[NUM_RESOURCES] memory resources) private {
-
-		assert(spender != ZERO_ADDRESS);
-		// #for N in range(NUM_RESOURCES)
-		if (resources[$(N)] > 0)
-			_market.burn(address(_tokens[$(N)]), spender, resources[$(N)]);
-		// #done
-	}
-
-	/// @dev Get the current market price of each resource token.
-	/// @return The ether market price of each token, in wei.
-	function _getMarketPrices() private view
-			returns (uint256[NUM_RESOURCES] memory prices) {
-
-		// #for RES in range(NUM_RESOURCES)
-		prices[$(RES)] = _market.getPrice(address(_tokens[$(RES)]));
-		// #done
 	}
 
 	// #if TEST
