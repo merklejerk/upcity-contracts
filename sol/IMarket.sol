@@ -14,9 +14,13 @@ contract IMarket {
 		external view returns (uint256[NUM_RESOURCES] memory balances);
 	function transfer(
 		address from, address to, uint256[NUM_RESOURCES] calldata amounts)
-		external view returns (uint256);
+		external;
 	function mint(address to, uint256[NUM_RESOURCES] calldata amounts)
 		external;
 	function burn(address from, uint256[NUM_RESOURCES] calldata amounts)
 		external;
+	function buy(uint256[NUM_RESOURCES] calldata amounts, address to)
+		external payable returns (uint256[NUM_RESOURCES] memory bought);
+	function sell(uint256[NUM_RESOURCES] calldata amounts, address payable to)
+		external returns (uint256 value);
 }

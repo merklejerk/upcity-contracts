@@ -5,7 +5,7 @@ const CONSTANTS = require('./constants');
 const SOURCE_UNITS = [
 	'UpcityMarket.sol',
 	'UpcityGame.sol',
-	'UpcityResourceToken.sol'
+	'UpcityResourceTokenProxy.sol'
 ];
 
 module.exports = {

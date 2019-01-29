@@ -7,7 +7,6 @@ const path = require('path');
 const constants = require('./constants.js');
 const TOKEN_RESERVE = 128;
 const MARKET_DEPOSIT = 20/120;
-const CONNECTOR_WEIGHT = 0.66;
 const RESOURCE_NAMES = constants.RESOURCE_NAMES;
 const RESOURCE_SYMBOLS = constants.RESOURCE_SYMBOLS;
 
@@ -47,9 +46,8 @@ async function deploy({contracts, target, config}) {
 		UpcityGame: game,
 		UpcityResourceToken} = contracts;
 	// Deploy the market and game.
-	const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
 	console.log('Deploying market...');
-	await market.new(cw).confirmed(confirmations);
+	await market.new().confirmed(confirmations);
 	console.log(`\tDeployed to: ${market.address.blue.bold}`);
 	console.log('Deploying game...');
 	await game.new().confirmed(confirmations);

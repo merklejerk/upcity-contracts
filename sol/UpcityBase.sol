@@ -1,38 +1,13 @@
 pragma solidity ^0.5;
 
-// #def ONE_DAY 24 * 60 * 60
+import './Macros.sol';
 
 // #def SEASON_DURATION \
 //		uint64((365.25 * ONE_DAY) / NUM_SEASONS / SEASON_FREQUENCY)
 
-// #def ONE_TOKEN (1 ether)
-
 // #def NEIGHBOR_OFFSET(idx) (((int32(idx)%3)-1), (1-int32(idx)/2))
 
-// #def ARRAY_SEP concat(",\n", __indent)
-
-// #def UINT256_ARRAY(count, value) \
-// 	map(filled(count, value), AS_UINT256)
-
-// #def UINT64_ARRAY(count, value) \
-// 	map(filled(count, value), AS_UINT64)
-
-// #def UINT8_ARRAY(count, value) \
-// 	map(filled(count, value), AS_UINT64)
-
-// #def TO_PPM(x) round(x * PRECISION)
-
-// #def AS_UINT64(x) `uint64($${uint64(x)})`
-
-// #def AS_UINT256(x) `uint256($${uint256(x)})`
-
-// #def PPM_ONE TO_PPM(1)
-
 // #def MAX_BLOCK_VALUE NUM_RESOURCES-1
-
-// #def MAX(a, b) ((a) >= (b) ? (a) : (b))
-
-// #def MIN(a, b) ((a) <= (b) ? (a) : (b))
 
 // #if TEST
 // #def BLOCKTIME __blockTime

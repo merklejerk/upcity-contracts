@@ -1,8 +1,8 @@
 pragma solidity ^0.5;
 
 import './base/openzeppelin/math/SafeMath.sol';
-import './Restricted.sol';
-import './Uninitialized.sol';
+import './base/openzeppelin/token/ERC20/IERC20.sol';
+import './Macros.sol';
 import './Nonpayable.sol';
 import './IMarket.sol';
 
@@ -13,9 +13,7 @@ import './IMarket.sol';
 /// responsibility of this contract is to manage spending allowances.
 contract UpcityResourceTokenProxy is
 		IERC20,
-		Uninitialized,
-		Nonpayable,
-		Errors {
+		Nonpayable {
 
 	using SafeMath for uint256;
 
@@ -46,15 +44,14 @@ contract UpcityResourceTokenProxy is
 			public {
 
 		require(idx < $(NUM_RESOURCES), ERROR_INVALID);
-		require(authorities.length > 0, ERROR_INVALID);
-		idx = _marketIndex;
+		_marketIndex = idx;
 		name = _name;
 		symbol = _symbol;
-		_market = IUpcityMarket(market);
+		_market = IMarket(market);
 	}
 
 	/// @dev Get the current supply of tokens.
-	/// @returns The current supply of tokens (in wei).
+	/// @return The current supply of tokens (in wei).
 	function totalSupply() external view returns (uint256) {
 		// Query the market.
 		return _market.getSupplies()[_marketIndex];
@@ -62,7 +59,7 @@ contract UpcityResourceTokenProxy is
 
 	/// @dev Get the token balance of an address.
 	/// @param who The address that owns the tokens.
-	/// @returns The balance of an address (in wei).
+	/// @return The balance of an address (in wei).
 	function balanceOf(address who) external view returns (uint256) {
 		// Query the market.
 		return _market.getBalances(who)[_marketIndex];
@@ -72,7 +69,7 @@ contract UpcityResourceTokenProxy is
 	/// @param owner The address that owns the tokens.
 	/// @param spender The address that has been given an allowance to spend
 	/// from `owner`.
-	/// @returns The remaining spending allowance (in wei).
+	/// @return The remaining spending allowance (in wei).
 	function allowance(address owner, address spender)
 			external view returns (uint256) {
 
@@ -126,10 +123,10 @@ contract UpcityResourceTokenProxy is
 	function _transfer(address from, address to, uint256 amt)
 			private {
 
-		uint256[NUM_RESOURCES] amts = [uint256(0), uint256(0), uint256(0)];
+		uint256[NUM_RESOURCES] memory amts = $$(UINT256_ARRAY(3, 0));
 		amts[_marketIndex] = amt;
 		// This should revert if the balances are insufficient.
-		_market.transfer(to, amts);
+		_market.transfer(from, to, amts);
 		emit Transfer(from, to, amt);
 	}
 }

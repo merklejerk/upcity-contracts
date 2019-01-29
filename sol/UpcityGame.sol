@@ -235,7 +235,7 @@ contract UpcityGame is
 		collect(x, y);
 		Tile storage tile = _getExistingTileAt(x, y);
 		// Must be owned by caller.
-		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
+		require(tile.owner == msg.sender, ERROR_RESTRICTED);
 		// Get the costs and count of the new blocks.
 		(uint256[NUM_RESOURCES] memory cost, uint8 count) =
 			_getBuildCostAndCount(tile, blocks);
@@ -261,7 +261,7 @@ contract UpcityGame is
 	function rename(int32 x, int32 y, bytes16 name) external onlyInitialized {
 		Tile storage tile = _getExistingTileAt(x, y);
 		// Must be owned by caller.
-		require(tile.owner == msg.sender, ERROR_NOT_ALLOWED);
+		require(tile.owner == msg.sender, ERROR_RESTRICTED);
 		tile.name = name;
 		emit Renamed(tile.id, name);
 	}

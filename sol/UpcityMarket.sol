@@ -4,8 +4,9 @@ pragma solidity ^0.5;
 import './base/openzeppelin/math/SafeMath.sol';
 import './base/bancor/BancorFormula.sol';
 import './Uninitialized.sol';
-import './IMarket.sol'
+import './IMarket.sol';
 import './Restricted.sol';
+import './Macros.sol';
 
 // #def ONE_DAY 24 * 60 * 60
 
@@ -25,6 +26,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	address private constant ZERO_ADDRESS = address(0x0);
 	// 100% or 1.0 in parts per million.
 	uint32 private constant PPM_ONE = $$(1e6);
+	// The bancor connector weight, which determines price evolution, in ppm.
+	uint32 private constant CONNECTOR_WEIGHT = $$(int(CONNECTOR_WEIGHT * 1e6));
 
 	// State for each resource token.
 	struct Token {
@@ -36,16 +39,18 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		uint256 priceYesterday;
 		// Time when priceYesterday was computed.
 		uint64 yesterday;
+		// The canonical index of this token.
+		uint8 idx;
+		// The address of the token contract.
+		address token;
 		// The balances of each address.
 		mapping(address=>uint256) balances;
 	}
 
-	/// @dev Bancor connector weight shared by all markets, in ppm.
-	uint32 public connectorWeight;
 	// Indiividual states for each resource token.
 	mapping(address=>Token) private _tokens;
 	// Token addresses for each resource token.
-	address private _tokenAddresses;
+	address[NUM_RESOURCES] private _tokenAddresses;
 
 	/// @dev Raised whenever resource tokens are bought.
 	/// @param resource The address of the token/resource.
@@ -73,25 +78,22 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 
 	// Only callable by a registered token.
 	modifier onlyToken() {
-		require(_tokens[msg.sender].supply > 0, ERROR_NOT_ALLOWED);
+		require(_tokens[msg.sender].token == msg.sender, ERROR_RESTRICTED);
 		_;
 	}
 
 	/// @dev Deploy the market.
 	/// init() needs to be called before market functions will work.
-	/// @param cw the bancor "connector weight" for all token markets, in ppm.
-	constructor(uint32 cw) public {
-		require(cw <= PPM_ONE);
-		connectorWeight = cw;
+	constructor() public {
 	}
 
 	/// @dev Fund the markets.
 	/// Attached ether will be distributed evenly across all token markets.
 	function() external payable onlyInitialized {
 		if (msg.value > 0) {
-			for (uint8 i = 0; i < tokens.length; i++) {
-				Token storage token = _tokens[tokens[i]];
-				token.funds = token.funds.add(msg.value/tokens.length);
+			for (uint8 i = 0; i < NUM_RESOURCES; i++) {
+				Token storage token = _tokens[_tokenAddresses[i]];
+				token.funds = token.funds.add(msg.value/NUM_RESOURCES);
 				_updatePriceYesterday(token);
 			}
 			emit Funded(msg.value);
@@ -114,15 +116,17 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 
 		require(msg.value >= NUM_RESOURCES, ERROR_INVALID);
 		// Set authorities.
-		for (uint256 i = 0; i < authorities.length; i++)
+		for (uint8 i = 0; i < authorities.length; i++)
 			isAuthority[authorities[i]] = true;
 		// Initialize token states.
-		for (uint256 i = 0; i < tokens.length; i++) {
+		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
 			address addr = tokens[i];
 			// Prevent duplicates.
-			assert(!_isToken[addr]);
-			_tokenAddresses.push(addr);
+			require(_tokens[addr].token == ZERO_ADDRESS, ERROR_INVALID);
+			_tokenAddresses[i] = addr;
 			Token storage token = _tokens[addr];
+			token.token = addr;
+			token.idx = i;
 			token.supply = supplyLock;
 			token.funds = msg.value / NUM_RESOURCES;
 			token.priceYesterday = _getTokenPrice(
@@ -144,9 +148,9 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 				uint256 funds,
 				uint256 priceYesterday) {
 
-		require(_isToken(resource), ERROR_INVALID);
 		Token storage token = _tokens[resource];
-		price = getPrice(resource);
+		require(token.token == resource, ERROR_INVALID);
+		price = getPrices()[token.idx];
 		supply = token.supply;
 		funds = token.funds;
 		priceYesterday = token.priceYesterday;
@@ -157,9 +161,10 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	function getPrices()
 			public view returns (uint256[NUM_RESOURCES] memory prices) {
 
-		// #for RES of range(NUM_RESOURCES)
+		// #for RES in range(NUM_RESOURCES)
 		prices[$(RES)] = _getTokenPrice(
-			_tokens[$(RES)].funds, _tokens[$(RES)].supply);
+			_tokens[_tokenAddresses[$(RES)]].funds,
+			_tokens[_tokenAddresses[$(RES)]].supply);
 		// #done
 	}
 
@@ -168,8 +173,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	function getSupplies()
 			external view returns (uint256[NUM_RESOURCES] memory supplies) {
 
-		// #for RES of range(NUM_RESOURCES)
-		supplies[$(RES)] = _tokens[$(RES)].supply;
+		// #for RES in range(NUM_RESOURCES)
+		supplies[$(RES)] = _tokens[_tokenAddresses[$(RES)]].supply;
 		// #done
 	}
 
@@ -180,49 +185,86 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	function getBalances(address owner)
 			external view returns (uint256[NUM_RESOURCES] memory balances) {
 
-		// #for RES of range(NUM_RESOURCES)
-		balances[$(RES)] = _tokens[$(RES)].balances[owner];
+		// #for RES in range(NUM_RESOURCES)
+		balances[$(RES)] = _tokens[_tokenAddresses[$(RES)]].balances[owner];
 		// #done
 	}
 
-	/// @dev Buy some tokens with ether.
-	/// @param resource The address of the resource token contract.
-	/// @param to Recipient of tokens.
-	/// @return The number of tokens purchased.
-	function buy(address resource, address to)
-			external payable onlyInitialized returns (uint256) {
+	/// @dev Tansfer tokens between owners.
+	/// Can only be called by a token contract.
+	/// @param from The owner wallet.
+	/// @param to The receiving wallet
+	/// @param amounts Amount of each token to transfer.
+	function transfer(
+			address from, address to, uint256[NUM_RESOURCES] calldata amounts)
+			external onlyInitialized onlyToken {
 
-		require(_isToken(resource), ERROR_INVALID);
-		Token storage token = _tokens[resource];
-		require(msg.value > 0, ERROR_INVALID);
-		_updatePriceYesterday(token);
-		uint256 bought = calculatePurchaseReturn(
-			supply, token.funds, connectorWeight, msg.value);
-		token.funds = token.funds.add(msg.value);
-		_mint(token, to, bought);
-		emit Bought(resource, to, msg.value, bought);
+		// Transfers to 0x0 or to a token address are burns.
+		if (to == ZERO_ADDRESS || _tokens[to].token != ZERO_ADDRESS) {
+			// #for RES in range(NUM_RESOURCES)
+			_burn(_tokens[_tokenAddresses[$(RES)]], from, amounts[$(RES)]);
+			// #done
+		} else {
+			// #for RES in range(NUM_RESOURCES)
+			_transfer(_tokens[_tokenAddresses[$(RES)]], from, to, amounts[$(RES)]);
+			// #done
+		}
+	}
+
+	/// @dev Buy tokens with ether.
+	/// Any overpayment of ether will be refunded to the buyer immediately.
+	/// @param amounts Amount of ether to exchange for each resource, in wei,
+	/// in canonical order.
+	/// @param to Recipient of tokens.
+	/// @return The number of each token purchased.
+	function buy(uint256[NUM_RESOURCES] calldata amounts, address to)
+			external payable onlyInitialized
+			returns (uint256[NUM_RESOURCES] memory bought) {
+
+		uint256 remaining = msg.value;
+		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
+			uint256 size = amounts[i];
+			require(size <= remaining, ERROR_INSUFFICIENT);
+			remaining -= size;
+			Token storage token = _tokens[_tokenAddresses[i]];
+			bought[i] = calculatePurchaseReturn(
+				token.supply, token.funds, CONNECTOR_WEIGHT, size);
+			if (bought[i] > 0) {
+				_mint(token, to, bought[i]);
+				token.funds = token.funds.add(size);
+				emit Bought(token.token, to, size, bought[i]);
+			}
+		}
+		// Refund any overpayment.
+		if (remaining > 0)
+			msg.sender.transfer(remaining);
 		return bought;
 	}
 
-	/// @dev Sell some tokens for ether.
-	/// @param resource The address of the resource token contract.
-	/// @param amount Amount of tokens to sell.
+	/// @dev Sell tokens for ether.
+	/// @param amounts Amount of ether to exchange for each resource, in wei,
+	/// in canonical order.
 	/// @param to Recipient of ether.
-	/// @return The number of ether received.
-	function sell(address resource, uint256 amount, address payable to)
-			external onlyInitialized returns (uint256) {
+	/// @return The combined amount of ether received.
+	function sell(uint256[NUM_RESOURCES] calldata amounts, address payable to)
+			external onlyInitialized returns (uint256 value) {
 
-		Token storage token = _tokens[resource];
-		require(_isToken(resource), ERROR_INVALID);
-		require(amount > 0, ERROR_INVALID);
-		_updatePriceYesterday(token);
-		uint256 funds = calculateSaleReturn(
-			supply, token.funds, connectorWeight, amount);
-		token.funds = token.funds.sub(funds);
-		_burn(resource, msg.sender, amount);
-		to.transfer(funds);
-		emit Sold(resource, to, amount, funds);
-		return funds;
+		value = 0;
+		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
+			uint256 size = amounts[i];
+			Token storage token = _tokens[_tokenAddresses[i]];
+			uint256 _value = calculateSaleReturn(
+				token.supply, token.funds, CONNECTOR_WEIGHT, size);
+			if (_value > 0) {
+				_burn(token, msg.sender, size);
+				token.funds = token.funds.sub(_value);
+				value = value.add(_value);
+				emit Sold(token.token, to, size, _value);
+			}
+		}
+		if (value > 0)
+			to.transfer(value);
+		return value;
 	}
 
 	/// @dev Burn tokens.
@@ -233,9 +275,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	function burn(address from, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyAuthority {
 
-		require(_isToken(resource), ERROR_INVALID);
 		// #for RES in range(NUM_RESOURCES)
-		_burn(_tokenAddresses[$(RES)], from, amounts[$(RES)]);
+		_burn(_tokens[_tokenAddresses[$(RES)]], from, amounts[$(RES)]);
 		// #done
 	}
 
@@ -243,25 +284,23 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	/// Mint a number of every of the token supported, to an owner.
 	/// Only an authority may call this.
 	/// @param to The owner of the new tokens.
-	/// @param amount The number of each token to mint.
+	/// @param amounts The number of each token to mint.
 	function mint(address to, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyAuthority {
 
-		require(_isToken(resource), ERROR_INVALID);
 		// #for RES in range(NUM_RESOURCES)
-		_mint(_tokenAddresses[$(RES)], from, amounts[$(RES)]);
+		_mint(_tokens[_tokenAddresses[$(RES)]], to, amounts[$(RES)]);
 		// #done
 	}
 
 	/// @dev Burn tokens owned by `from`.
-	/// Will revert if insufficient balance.
-	/// @param resource The token's address.
+	/// Will revert if insufficient supply or balance.
+	/// @param token The token state instance.
 	/// @param from The token owner.
 	/// @param amount The number of tokens to burn (in wei).
-	function _burn(address resource, address from, uint256 amount)
+	function _burn(Token storage token, address from, uint256 amount)
 			private {
 
-		Token storage token = _tokens[resource];
 		uint256 balance = token.balances[from];
 		require(token.supply >= amount, ERROR_INSUFFICIENT);
 		require(balance >= amount, ERROR_INSUFFICIENT);
@@ -270,18 +309,32 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		_updatePriceYesterday(token);
 	}
 
-	/// @dev Mint tokens to be owned by `from`.
-	/// @param resource The token's address.
-	/// @param from The token owner.
+	/// @dev Mint tokens to be owned by `to`.
+	/// @param token The token state instance.
+	/// @param to The token owner.
 	/// @param amount The number of tokens to burn (in wei).
-	function _mint(address resource, address from, uint256 amount)
+	function _mint(Token storage token, address to, uint256 amount)
 			private {
 
-		Token storage token = _tokens[resource];
-		uint256 balance = token.balances[from];
+		token.supply = token.supply.add(amount);
+		token.balances[to] = token.balances[to].add(amount);
+		_updatePriceYesterday(token);
+	}
+
+	/// @dev Move tokens between andresses.
+	/// Will revert if `from` has insufficient balance.
+	/// @param token The token state instance.
+	/// @param from The token owner.
+	/// @param to The token receiver.
+	/// @param amount The number of tokens to move (in wei).
+	function _transfer(
+			Token storage token, address from, address to, uint256 amount)
+			private {
+
+		require(token.balances[from] >= amount, ERROR_INSUFFICIENT);
 		assert(token.supply + amount >= amount);
-		token.supply += amount;
-		token.balances[from] += amount;
+		token.balances[from] -= amount;
+		token.balances[to] = token.balances[to].add(amount);
 		_updatePriceYesterday(token);
 	}
 
@@ -290,8 +343,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	/// @param supply The token's supply.
 	/// @return The (ether) price.
 	function _getTokenPrice(uint256 funds, uint256 supply)
-			private view returns (uint256) {
-		return ((1 ether) * funds) / ((supply * connectorWeight) / PPM_ONE);
+			private pure returns (uint256) {
+		return ((1 ether) * funds) / ((supply * CONNECTOR_WEIGHT) / PPM_ONE);
 	}
 
 	/// @dev Update the price yesterday of a token.
