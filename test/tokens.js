@@ -21,6 +21,10 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		this.users = _.without(this.accounts, this.authority);
 		this.tokens = this.contracts['UpcityResourceTokenProxy'];
 		this.market = this.contracts['UpcityMarket'];
+		this.randomToken = () => _.sample(tokens);
+		this.randomUsers = (size=1) => _.sampleSize(this.users, size);
+
+		// Deploy the market and tokens.
 		const market = this.market = this.contracts['UpcityMarket'].clone();
 		await market.new();
 		const tokens = this.tokens = _.times(NUM_TOKENS,
@@ -36,8 +40,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await market.init(
 			SUPPLY_LOCK, _.map(tokens, t => t.address), [this.authority],
 			{value: INITIAL_FUNDS});
-		this.randomToken = () => _.sample(tokens);
-		this.randomUsers = (size=1) => _.sampleSize(this.users, size);
 	});
 
 	beforeEach(async function() {
