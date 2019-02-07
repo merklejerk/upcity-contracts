@@ -1,0 +1,308 @@
+'use strict'
+require('colors');
+const _ = require('lodash');
+const assert = require('assert');
+const bn = require('bn-str-256');
+const ethjs = require('ethereumjs-util');
+const testbed = require('../../src/testbed');
+const constants = require('../../constants.js');
+const ERRORS = require('../lib/errors.js');
+
+const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
+const {
+	MAX_HEIGHT,
+	NUM_RESOURCES,
+ 	RESOURCE_NAMES,
+	RESOURCE_SYMBOLS } = constants;
+const CONNECTOR_WEIGHT = 0.66;
+const BLOCKS = _.times(NUM_RESOURCES);
+const RESERVE = bn.mul(ONE_TOKEN, 1e3);
+const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
+const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
+const NUM_NEIGHBORS = NEIGHBOR_OFFSETS.length;
+const ONE_DAY = 24 * 60 * 60;
+const HIGH_GAS = 400e3;
+
+describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
+
+	before(async function() {
+		_.assign(this, await testbed());
+		this.authority = this.accounts[0];
+		this.genesisPlayer = this.accounts[1];
+		this.users = _.slice(this.accounts, 2);
+		this.market = this.contracts['UpcityMarket'];
+		this.game = this.contracts['UpcityGame'];
+		this.describeTile = describeTile;
+		this.buyTokens = buyTokens;
+		this.buildTower = buildTower;
+		this.buyTile = buyTile;
+		this.collect = collect;
+
+		// Deploy the market and game.
+		const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
+		await this.market.new(cw);
+		const tx = await this.game.new();
+		// Deploy and init the tokens.
+		this.tokens = [];
+		for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
+			const token = this.contracts['UpcityResourceToken'].clone();
+			await token.new(name, symbol, RESERVE, [this.market.address]);
+			this.tokens.push(token);
+		}
+		// Init the market.
+		const tokens = _.map(this.tokens, t => t.address);
+		await this.market.init(
+			tokens,
+			[this.game.address],
+			{value: MARKET_DEPOSIT});
+		//  Init the game.
+		await this.game.init(
+			tokens,
+			this.market.address,
+			this.genesisPlayer,
+			[this.authority], );
+	});
+
+	beforeEach(async function() {
+		this.snapshotId = await this.saveSnapshot();
+	});
+
+	afterEach(async function() {
+		await this.restoreSnapshot(this.snapshotId);
+	});
+
+	describe('buyTile', function() {
+		test('owned, empty tile, no neighbors', async function() {
+			const [buyer] = _.sampleSize(this.users, 1);
+			const [x, y] = [0, 0];
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buyTile(x, y, buyer);
+		});
+
+		test('edge tile', async function() {
+			const [buyer] = _.sampleSize(this.users, 1);
+			const [x, y] = _.sample(NEIGHBOR_OFFSETS);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buyTile(x, y, buyer);
+		});
+
+		test('owned, MAX_HEIGHT tile, no neighbors', async function() {
+			const [buyer] = _.sampleSize(this.users, 1);
+			const [x, y] = [0, 0];
+			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
+			await this.buildTower(x, y, blocks);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buyTile(x, y, buyer);
+		});
+
+		test('owned, MAX_HEIGHT tile, 6 neighbors', async function() {
+			const [x, y] = [0, 0];
+			for (const [nx, ny] of NEIGHBOR_OFFSETS)
+				await this.buyTile(x + nx, y + ny, _.sample(this.users));
+			const [buyer] = _.sampleSize(this.users, 1);
+			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
+			await this.buildTower(x, y, blocks);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buyTile(x, y, buyer);
+		});
+	});
+
+	describe('collect', function() {
+		test('no tower, no neighbors', async function() {
+			const [x, y] = [0, 0];
+			await this.game.__advanceTime(ONE_DAY);
+			return this.collect(x, y);
+		});
+
+		test('MAX_HEIGHT, no neighbors', async function() {
+			const [x, y] = [0, 0];
+			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
+			await this.buildTower(x, y, blocks);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.collect(x, y);
+		});
+
+		test('MAX_HEIGHT, 6 neighbors', async function() {
+			const [x, y] = [0, 0];
+			for (const [nx, ny] of NEIGHBOR_OFFSETS)
+				await this.buyTile(x + nx, y + ny, _.sample(this.users));
+			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
+			await this.buildTower(x, y, blocks);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.collect(x, y);
+		});
+	});
+
+	describe('buildBlocks', function() {
+		test('0 + 1', async function() {
+			const [x, y] = [0, 0];
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buildTower(x, y, [0]);
+		});
+
+		test('1 + 1', async function() {
+			const [x, y] = [0, 0];
+			await this.buildTower(x, y, [0]);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buildTower(x, y, [1]);
+		});
+
+		test('0 + MAX_HEIGHT', async function() {
+			const [x, y] = [0, 0];
+			await this.game.__advanceTime(ONE_DAY);
+			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
+			return this.buildTower(x, y, blocks);
+		});
+
+		test('1 + (MAX_HEIGHT-1)', async function() {
+			const [x, y] = [0, 0];
+			await this.buildTower(x, y, [0]);
+			await this.game.__advanceTime(ONE_DAY);
+			const blocks = _.times(MAX_HEIGHT-1, i => i % NUM_RESOURCES);
+			return this.buildTower(x, y, blocks);
+		});
+	});
+});
+
+function test(desc, cb) {
+	it(desc, async function() {
+		const r = await cb.call(this);
+		printGasUsage(r.gasUsed || _.toNumber(r));
+	});
+}
+
+function decodeBlocks(encoded) {
+	const hex = bn.toHex(encoded, MAX_HEIGHT*2).substr(2);
+	return _.filter(
+		_.times(MAX_HEIGHT, i => parseInt(hex.substr(-(i+1)*2, 2), 16)),
+		b => b != 255);
+}
+
+function encodeBlocks(blocks) {
+	assert(blocks.length <= MAX_HEIGHT);
+	const slots = [];
+	for (let i = 0; i < MAX_HEIGHT; i++)
+		slots.push(i < blocks.length ? blocks[i]: 255);
+	return '0x'+_.map(_.reverse(slots),
+		n => bn.toHex(n, 2).substr(2)).join('');
+}
+
+function unpackDescription(r) {
+	return {
+		id: r.id,
+		name: decodeName(r.name),
+		lastTouchTime: bn.toNumber(r.lastTouchTime),
+		timesBought: bn.toNumber(r.timesBought),
+		owner: r.owner,
+		blocks: decodeBlocks(r.blocks),
+		price: r.price,
+		sharedResources: r.sharedResources,
+		funds: r.funds,
+		inSeason: r.inSeason,
+		scores: r.scores
+	};
+}
+
+function toInt32Buffer(v) {
+	if (bn.lt(v, 0)) {
+		// Encode as two's complement.
+		const bits = _.map(bn.toBits(bn.abs(v), 4*8), b => (b+1) % 2);
+		v = bn.add(bn.fromBits(bits), 1);
+	}
+	return bn.toBuffer(v, 4);
+}
+
+function toTileId(x, y) {
+	const data = Buffer.concat([
+		new Buffer.from([0x13, 0x37]),
+		toInt32Buffer(y),
+		toInt32Buffer(x)
+	]);
+	return ethjs.bufferToHex(data);
+}
+
+async function describeTile(x, y) {
+	return _.assign(
+		unpackDescription(await this.game.describeTile(x, y)),
+		{x: x, y: y});
+}
+
+async function buyTokens(whom, tokens, bonus=0.01) {
+	assert(_.isArray(tokens) && tokens.length == NUM_RESOURCES);
+	for (let res = 0; res < tokens.length; res++) {
+		const amount = tokens[res];
+		const token = this.tokens[res].address;
+		const {price, supply, funds} = await this.market.getState(token);
+		// Need to pay a little more to ensure we get enough.
+		const cost = bn.int(
+			bn.mul(getTokenPurchaseCost(amount, supply, funds), (1+bonus)));
+		const tx = await this.market.buy(
+			token,
+			whom,
+			{from: whom, value: cost}
+		);
+		const {bought} = tx.findEvent('Bought').args;
+		// Sell any excess.
+		if (bn.gt(bought, amount)) {
+			await this.market.sell(
+				token,
+				bn.sub(bought, amount),
+				whom,
+				{from: whom}
+			);
+		}
+	}
+}
+
+async function buildTower(x, y, blocks, caller=null) {
+	if (!caller)
+		caller = (await this.describeTile(x, y)).owner;
+	let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
+	await this.buyTokens(caller, cost);
+	return this.game.buildBlocks(x, y, encodeBlocks(blocks),
+		{from: caller});
+}
+
+async function buyTile(x, y, player) {
+	const {price} = await this.describeTile(x, y);
+	return this.game.buy(x, y, {from: player, value: price});
+}
+
+async function collect(x, y) {
+	const {owner} = await this.describeTile(x, y);
+	return this.game.collect(x, y, {from: owner});
+}
+
+function getTokenPurchaseCost(amount, supply, funds) {
+	let c = bn.div(bn.add(supply, amount), supply)
+	c = bn.pow(c, 1/CONNECTOR_WEIGHT);
+	c = bn.sub(c, 1);
+	c = bn.mul(c, funds);
+	return bn.round(c);
+}
+
+function encodeName(name) {
+	return '0x'+ethjs.setLengthRight(Buffer.from(name), 16).toString('hex');
+}
+
+function decodeName(encoded) {
+	const buf = ethjs.toBuffer(encoded);
+	let end = 0;
+	for (; end < buf.length; end++) {
+		if (buf[end] == 0)
+			break;
+	}
+	return buf.slice(0, end).toString();
+}
+
+function printGasUsage(gasUsed) {
+	const f = gasUsed / HIGH_GAS;
+	let s = gasUsed.toString().bold;
+	if (f >= 1.0)
+		s = s.red;
+	else if (f <= 0.33)
+		s = s.green;
+	else
+		s = s.yellow;
+	console.log('\t' + s);
+}

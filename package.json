@@ -6,12 +6,13 @@
 	"repository": "https://github.com/merklejerk/upcity-contracts",
 	"author": "Lawrence Forman <me@merklejerk.com>",
 	"license": "Apache-2.0",
-	"private": false,
+	"private": true,
 	"scripts": {
 		"build": "node src/build release",
 		"test": "node src/build test && mocha --timeout 60000 test/*.js",
 		"deploy": "node src/build release && node src/deploy",
-		"clean": "node src/clean"
+		"clean": "node src/clean",
+		"gas": "node src/build test && mocha --timeout 60000 test/gas/game.js"
 	},
 	"devDependencies": {
 		"bip39": "^2.5.0",

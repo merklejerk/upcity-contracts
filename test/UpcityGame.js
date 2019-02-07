@@ -24,96 +24,6 @@ const NUM_NEIGHBORS = NEIGHBOR_OFFSETS.length;
 const ONE_DAY = 24 * 60 * 60;
 const SEASON_DURATION = Math.floor((365.25 * ONE_DAY) / NUM_SEASONS / SEASON_FREQUENCY);
 
-function decodeBlocks(encoded) {
-	const hex = bn.toHex(encoded, MAX_HEIGHT*2).substr(2);
-	return _.filter(
-		_.times(MAX_HEIGHT, i => parseInt(hex.substr(-(i+1)*2, 2), 16)),
-		b => b != 255);
-}
-
-function encodeBlocks(blocks) {
-	assert(blocks.length <= MAX_HEIGHT);
-	const slots = [];
-	for (let i = 0; i < MAX_HEIGHT; i++)
-		slots.push(i < blocks.length ? blocks[i]: 255);
-	return '0x'+_.map(_.reverse(slots),
-		n => bn.toHex(n, 2).substr(2)).join('');
-}
-
-function encodeName(name) {
-	return '0x'+ethjs.setLengthRight(Buffer.from(name), 16).toString('hex');
-}
-
-function decodeName(encoded) {
-	const buf = ethjs.toBuffer(encoded);
-	let end = 0;
-	for (; end < buf.length; end++) {
-		if (buf[end] == 0)
-			break;
-	}
-	return buf.slice(0, end).toString();
-}
-
-function unpackDescription(r) {
-	return {
-		id: r.id,
-		name: decodeName(r.name),
-		lastTouchTime: bn.toNumber(r.lastTouchTime),
-		timesBought: bn.toNumber(r.timesBought),
-		owner: r.owner,
-		blocks: decodeBlocks(r.blocks),
-		price: r.price,
-		sharedResources: r.sharedResources,
-		funds: r.funds,
-		inSeason: r.inSeason,
-		scores: r.scores
-	};
-}
-
-function toInt32Buffer(v) {
-	if (bn.lt(v, 0)) {
-		// Encode as two's complement.
-		const bits = _.map(bn.toBits(bn.abs(v), 4*8), b => (b+1) % 2);
-		v = bn.add(bn.fromBits(bits), 1);
-	}
-	return bn.toBuffer(v, 4);
-}
-
-function toTileId(x, y) {
-	const data = Buffer.concat([
-		new Buffer.from([0x13, 0x37]),
-		toInt32Buffer(y),
-		toInt32Buffer(x)
-	]);
-	return ethjs.bufferToHex(data);
-}
-
-function getDistributions(tileInfos) {
-	const totals = _.reduce(tileInfos,
-		(t, ti) => {
-			const balances = [...ti.sharedResources, ti.funds];
-			return _.map(_.zip(balances, t), ([a, b]) => bn.add(a, b));
-		},
-		_.times(NUM_RESOURCES+1, i => '0')
-	);
-	return _.map(tileInfos,
-		ti => {
-			const balances = [...ti.sharedResources, ti.funds];
-			return bn.dp(bn.div(
-				bn.sum(_.map(_.zip(balances, totals),
-					([a, b]) => bn.div(a, b))), balances.length), 2);
-		}
-	);
-}
-
-function getTokenPurchaseCost(amount, supply, funds) {
-	let c = bn.div(bn.add(supply, amount), supply)
-	c = bn.pow(c, 1/CONNECTOR_WEIGHT);
-	c = bn.sub(c, 1);
-	c = bn.mul(c, funds);
-	return bn.round(c);
-}
-
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	async function describeTile(x, y) {
@@ -939,3 +849,93 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		});
 	})
 });
+
+function decodeBlocks(encoded) {
+	const hex = bn.toHex(encoded, MAX_HEIGHT*2).substr(2);
+	return _.filter(
+		_.times(MAX_HEIGHT, i => parseInt(hex.substr(-(i+1)*2, 2), 16)),
+		b => b != 255);
+}
+
+function encodeBlocks(blocks) {
+	assert(blocks.length <= MAX_HEIGHT);
+	const slots = [];
+	for (let i = 0; i < MAX_HEIGHT; i++)
+		slots.push(i < blocks.length ? blocks[i]: 255);
+	return '0x'+_.map(_.reverse(slots),
+		n => bn.toHex(n, 2).substr(2)).join('');
+}
+
+function encodeName(name) {
+	return '0x'+ethjs.setLengthRight(Buffer.from(name), 16).toString('hex');
+}
+
+function decodeName(encoded) {
+	const buf = ethjs.toBuffer(encoded);
+	let end = 0;
+	for (; end < buf.length; end++) {
+		if (buf[end] == 0)
+			break;
+	}
+	return buf.slice(0, end).toString();
+}
+
+function unpackDescription(r) {
+	return {
+		id: r.id,
+		name: decodeName(r.name),
+		lastTouchTime: bn.toNumber(r.lastTouchTime),
+		timesBought: bn.toNumber(r.timesBought),
+		owner: r.owner,
+		blocks: decodeBlocks(r.blocks),
+		price: r.price,
+		sharedResources: r.sharedResources,
+		funds: r.funds,
+		inSeason: r.inSeason,
+		scores: r.scores
+	};
+}
+
+function toInt32Buffer(v) {
+	if (bn.lt(v, 0)) {
+		// Encode as two's complement.
+		const bits = _.map(bn.toBits(bn.abs(v), 4*8), b => (b+1) % 2);
+		v = bn.add(bn.fromBits(bits), 1);
+	}
+	return bn.toBuffer(v, 4);
+}
+
+function toTileId(x, y) {
+	const data = Buffer.concat([
+		new Buffer.from([0x13, 0x37]),
+		toInt32Buffer(y),
+		toInt32Buffer(x)
+	]);
+	return ethjs.bufferToHex(data);
+}
+
+function getDistributions(tileInfos) {
+	const totals = _.reduce(tileInfos,
+		(t, ti) => {
+			const balances = [...ti.sharedResources, ti.funds];
+			return _.map(_.zip(balances, t), ([a, b]) => bn.add(a, b));
+		},
+		_.times(NUM_RESOURCES+1, i => '0')
+	);
+	return _.map(tileInfos,
+		ti => {
+			const balances = [...ti.sharedResources, ti.funds];
+			return bn.dp(bn.div(
+				bn.sum(_.map(_.zip(balances, totals),
+					([a, b]) => bn.div(a, b))), balances.length), 2);
+		}
+	);
+}
+
+function getTokenPurchaseCost(amount, supply, funds) {
+	let c = bn.div(bn.add(supply, amount), supply)
+	c = bn.pow(c, 1/CONNECTOR_WEIGHT);
+	c = bn.sub(c, 1);
+	c = bn.mul(c, funds);
+	return bn.round(c);
+}
