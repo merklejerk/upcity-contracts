@@ -37,8 +37,6 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		uint256 funds;
 		// Price yesterday.
 		uint256 priceYesterday;
-		// Time when priceYesterday was computed.
-		uint64 yesterday;
 		// The canonical index of this token.
 		uint8 idx;
 		// The address of the token contract.
@@ -47,6 +45,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		mapping(address=>uint256) balances;
 	}
 
+	// @dev When the priceYesterday of each token was last updated.
+	uint64 public yesterday;
 	// Indiividual states for each resource token.
 	mapping(address=>Token) private _tokens;
 	// Token addresses for each resource token.
@@ -91,10 +91,10 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	/// Attached ether will be distributed evenly across all token markets.
 	function() external payable onlyInitialized {
 		if (msg.value > 0) {
+			_touch();
 			for (uint8 i = 0; i < NUM_RESOURCES; i++) {
 				Token storage token = _tokens[_tokenAddresses[i]];
 				token.funds = token.funds.add(msg.value/NUM_RESOURCES);
-				_updatePriceYesterday(token);
 			}
 			emit Funded(msg.value);
 		}
@@ -131,8 +131,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 			token.funds = msg.value / NUM_RESOURCES;
 			token.priceYesterday = _getTokenPrice(
 				token.funds, supplyLock);
-			token.yesterday = $(BLOCKTIME);
 		}
+		yesterday = $(BLOCKTIME);
 		_bancorInit();
 		_init();
 	}
@@ -221,6 +221,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 			external payable onlyInitialized
 			returns (uint256[NUM_RESOURCES] memory bought) {
 
+		_touch();
 		uint256 remaining = msg.value;
 		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
 			uint256 size = amounts[i];
@@ -249,6 +250,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	function sell(uint256[NUM_RESOURCES] calldata amounts, address payable to)
 			external onlyInitialized returns (uint256 value) {
 
+		_touch();
 		value = 0;
 		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
 			uint256 size = amounts[i];
@@ -275,6 +277,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	function burn(address from, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyAuthority {
 
+		_touch();
 		// #for RES in range(NUM_RESOURCES)
 		_burn(_tokens[_tokenAddresses[$(RES)]], from, amounts[$(RES)]);
 		// #done
@@ -288,6 +291,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	function mint(address to, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyAuthority {
 
+		_touch();
 		// #for RES in range(NUM_RESOURCES)
 		_mint(_tokens[_tokenAddresses[$(RES)]], to, amounts[$(RES)]);
 		// #done
@@ -306,7 +310,6 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		require(balance >= amount, ERROR_INSUFFICIENT);
 		token.supply -= amount;
 		token.balances[from] -= amount;
-		_updatePriceYesterday(token);
 	}
 
 	/// @dev Mint tokens to be owned by `to`.
@@ -318,7 +321,6 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 
 		token.supply = token.supply.add(amount);
 		token.balances[to] = token.balances[to].add(amount);
-		_updatePriceYesterday(token);
 	}
 
 	/// @dev Move tokens between andresses.
@@ -335,7 +337,6 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		assert(token.supply + amount >= amount);
 		token.balances[from] -= amount;
 		token.balances[to] = token.balances[to].add(amount);
-		_updatePriceYesterday(token);
 	}
 
 	/// @dev Calculate the price of a token.
@@ -347,17 +348,18 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		return ((1 ether) * funds) / ((supply * CONNECTOR_WEIGHT) / PPM_ONE);
 	}
 
-	/// @dev Update the price yesterday of a token.
+	/// @dev Update the price yesterday for all tokens.
 	/// Nothing will happen if less than a day has passed since the last
 	/// update.
-	/// @param token The token's state instance.
-	function _updatePriceYesterday(Token storage token)
-			private {
-
+	function _touch() private {
 		uint64 _now = $(BLOCKTIME);
-		if (_now > token.yesterday && _now - token.yesterday >= $$(ONE_DAY)) {
-			token.priceYesterday = _getTokenPrice(token.funds, token.supply);
-			token.yesterday = _now;
+		if (_now > yesterday && _now - yesterday >= $$(ONE_DAY)) {
+			// #for TOKEN in map(range(NUM_RESOURCES), (X) => `_tokens[_tokenAddresses[${X}]]`)
+			$$(TOKEN).priceYesterday = _getTokenPrice(
+				$$(TOKEN).funds,
+				$$(TOKEN).supply);
+			// #done
+			yesterday = _now;
 		}
 	}
 
