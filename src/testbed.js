@@ -16,6 +16,7 @@ process.on('unhandledRejection', (err) => {});
 const ONE_TOKEN = bn.parse('1e18');
 const MAX_UINT = bn.sub(bn.pow(2, 256), 1);
 const ZERO_ADDRESS = '0x' + _.repeat('0', 40);
+const LOG_FILE = path.resolve(project.PROJECT_ROOT, 'ganache.log');
 
 function createAccounts(accounts, balance=bn.mul(1e6, ONE_TOKEN)) {
 	if (_.isArray(accounts)) {
@@ -98,13 +99,24 @@ async function restoreSnapshot(provider, id) {
 	return resp.result;
 }
 
+function log(...args) {
+	if (args.length) {
+		const line = args.join(' ');
+		// Ony care about indented transaction data and
+		// Whitespace.
+		if (!args || args[0].startsWith(' '))
+			fs.appendFileSync(LOG_FILE, line.trim() + '\n');
+	}
+}
+
 module.exports = async function(opts={}) {
 	const accounts = createAccounts(opts.accounts, opts.balance);
 	const providerOpts = {
 		accounts: _.map(accounts, a => ({secretKey: a.secret, balance: a.balance})),
 		allowUnlimitedContractSize: true,
 		gasLimit: '0x3B9ACA00', // 1e9
-		gasPrice: '0x1'
+		gasPrice: '0x1',
+		logger: {log: log}
 	};
 	const provider = ganache.provider(providerOpts);
 	const eth = new FlexEther({provider: provider, gasBonus: 0.75});
