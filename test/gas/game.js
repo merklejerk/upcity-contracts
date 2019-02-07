@@ -161,6 +161,42 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const blocks = _.times(MAX_HEIGHT-1, i => i % NUM_RESOURCES);
 			return this.buildTower(x, y, blocks);
 		});
+
+		test('0 + 1, 6 neighbors', async function() {
+			const [x, y] = [0, 0];
+			for (const [nx, ny] of NEIGHBOR_OFFSETS)
+				await this.buyTile(x + nx, y + ny, _.sample(this.users));
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buildTower(x, y, [0]);
+		});
+
+		test('1 + 1, 6 neighbors', async function() {
+			const [x, y] = [0, 0];
+			for (const [nx, ny] of NEIGHBOR_OFFSETS)
+				await this.buyTile(x + nx, y + ny, _.sample(this.users));
+			await this.buildTower(x, y, [0]);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buildTower(x, y, [1]);
+		});
+
+		test('0 + MAX_HEIGHT, 6 neighbors', async function() {
+			const [x, y] = [0, 0];
+			for (const [nx, ny] of NEIGHBOR_OFFSETS)
+				await this.buyTile(x + nx, y + ny, _.sample(this.users));
+			await this.game.__advanceTime(ONE_DAY);
+			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
+			return this.buildTower(x, y, blocks);
+		});
+
+		test('1 + (MAX_HEIGHT-1), 6 neighbors', async function() {
+			const [x, y] = [0, 0];
+			for (const [nx, ny] of NEIGHBOR_OFFSETS)
+				await this.buyTile(x + nx, y + ny, _.sample(this.users));
+			await this.buildTower(x, y, [0]);
+			await this.game.__advanceTime(ONE_DAY);
+			const blocks = _.times(MAX_HEIGHT-1, i => i % NUM_RESOURCES);
+			return this.buildTower(x, y, blocks);
+		});
 	});
 });
 
