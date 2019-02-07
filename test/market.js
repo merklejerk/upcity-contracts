@@ -6,7 +6,7 @@ const testbed = require('../src/testbed');
 const constants = require('../constants.js');
 const ERRORS = require('./lib/errors.js');
 
-const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
+const {ONE_TOKEN, ZERO_ADDRESS} = testbed;
 const NUM_TOKENS = constants.NUM_RESOURCES;
 const SUPPLY_LOCK = bn.mul(100, ONE_TOKEN);
 const INITIAL_FUNDS = bn.mul(1, ONE_TOKEN);
@@ -41,6 +41,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await inst
 				.new(inst.IDX, inst.NAME, inst.SYMBOL, market.address);
 		}
+		// Initialize the market.
 		await market.init(
 			SUPPLY_LOCK, _.map(tokens, t => t.address), [this.authority],
 			{value: INITIAL_FUNDS});
@@ -52,6 +53,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	afterEach(async function() {
 		await this.restoreSnapshot(this.snapshotId);
+	});
+
+	it('Cannot call init again', async function() {
+		const token = testbed.randomAddress();
+		await assert.rejects(this.market.init(
+			SUPPLY_LOCK, _.map(this.tokens, t => t.address), [this.authority],
+			{value: INITIAL_FUNDS}), ERRORS.UNINITIALIZED);
+	});
+
+	it('Can get all supported tokens', async function() {
+		const tokens = await this.market.getTokens();
+		assert.deepEqual(tokens, _.map(this.tokens, t => t.address));
 	});
 
 	it('Cannot get the market state of an unknown token', async function() {

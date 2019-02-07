@@ -29,8 +29,6 @@ contract UpcityGame is
 	bytes10[] public tilesBought;
 	// Global block stats for each resource.
 	BlockStats[NUM_RESOURCES] private _blockStats;
-	// Address for each resource token.
-	address[NUM_RESOURCES] private _tokens;
 	// The market for all resources.
 	IMarket private _market;
 	// Tiles by ID.
@@ -61,22 +59,17 @@ contract UpcityGame is
 	/// @dev Initialize this contract.
 	/// All transactional functions will revert if this has not been called
 	/// first by the the contract creator. This cannot be called twice.
-	/// @param tokens Each resource's UpcityResourceToken addresses.
 	/// @param market The UpcityMarket address.
 	/// @param authorities Array of addresses allowed to call collectFees().
 	/// @param genesisPlayer The owner of the genesis tile, at <0,0>.
 	function init(
-			address[NUM_RESOURCES] calldata tokens,
 			address market,
 			address genesisPlayer,
 			address[] calldata authorities)
 			external onlyCreator onlyUninitialized {
 
-		require(tokens.length == NUM_RESOURCES, ERROR_INVALID);
 		for (uint256 i = 0; i < authorities.length; i++)
 			isAuthority[authorities[i]] = true;
-		for (uint256 i = 0; i < NUM_RESOURCES; i++)
-			_tokens[i] = tokens[i];
 		_market = IMarket(market);
 
 		// Create the genesis tile and its neighbors.

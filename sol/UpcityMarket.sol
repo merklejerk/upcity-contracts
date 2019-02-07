@@ -137,6 +137,16 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		_init();
 	}
 
+	/// @dev Get all token addresses the market supports.
+	/// @return Array of token addresses.
+	function getTokens()
+			external view returns (address[NUM_RESOURCES] memory tokens) {
+
+		// #for RES in range(NUM_RESOURCES)
+		tokens[$$(RES)] = _tokenAddresses[$$(RES)];
+		// #done
+	}
+
 	/// @dev Get the state of a resource token.
 	/// @param resource Address of the resource token contract.
 	/// @return The price, supply, (ether) balance, and yesterday's price
@@ -213,18 +223,18 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 
 	/// @dev Buy tokens with ether.
 	/// Any overpayment of ether will be refunded to the buyer immediately.
-	/// @param amounts Amount of ether to exchange for each resource, in wei,
+	/// @param values Amount of ether to exchange for each resource, in wei,
 	/// in canonical order.
 	/// @param to Recipient of tokens.
 	/// @return The number of each token purchased.
-	function buy(uint256[NUM_RESOURCES] calldata amounts, address to)
+	function buy(uint256[NUM_RESOURCES] calldata values, address to)
 			external payable onlyInitialized
 			returns (uint256[NUM_RESOURCES] memory bought) {
 
 		_touch();
 		uint256 remaining = msg.value;
 		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
-			uint256 size = amounts[i];
+			uint256 size = values[i];
 			require(size <= remaining, ERROR_INSUFFICIENT);
 			remaining -= size;
 			Token storage token = _tokens[_tokenAddresses[i]];

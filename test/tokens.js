@@ -37,6 +37,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await inst
 				.new(inst.IDX, inst.NAME, inst.SYMBOL, market.address);
 		}
+		// Initialize the market.
 		await market.init(
 			SUPPLY_LOCK, _.map(tokens, t => t.address), [this.authority],
 			{value: INITIAL_FUNDS});
