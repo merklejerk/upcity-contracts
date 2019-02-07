@@ -29,8 +29,7 @@ const SEASON_DURATION = Math.floor((365.25 * ONE_DAY) / NUM_SEASONS / SEASON_FRE
 describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	before(async function() {
-		_.assign(this, await testbed({
-			contracts: ['UpcityGame', 'UpcityMarket', 'UpcityResourceTokenProxy']}));
+		_.assign(this, await testbed());
 		this.authority = this.accounts[0];
 		this.genesisPlayer = this.accounts[1];
 		this.users = _.slice(this.accounts, 2);

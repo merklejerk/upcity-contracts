@@ -8,16 +8,18 @@ const testbed = require('../../src/testbed');
 const constants = require('../../constants.js');
 const ERRORS = require('../lib/errors.js');
 
-const {MAX_UINT, ONE_TOKEN, ZERO_ADDRESS} = testbed;
+const {ONE_TOKEN, ZERO_ADDRESS} = testbed;
 const {
 	MAX_HEIGHT,
 	NUM_RESOURCES,
  	RESOURCE_NAMES,
-	RESOURCE_SYMBOLS } = constants;
-const CONNECTOR_WEIGHT = 0.66;
+	RESOURCE_SYMBOLS,
+ 	CONNECTOR_WEIGHT } = constants;
 const BLOCKS = _.times(NUM_RESOURCES);
-const RESERVE = bn.mul(ONE_TOKEN, 1e3);
-const MARKET_DEPOSIT = bn.mul(0.1, ONE_TOKEN);
+const SUPPLY_LOCK = bn.mul(100, ONE_TOKEN);
+const INITIAL_FUNDS = bn.mul(1, ONE_TOKEN);
+const TOKEN_NAME = 'TestToken';
+const TOKEN_SYMBOL = 'TTKN';
 const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
 const NUM_NEIGHBORS = NEIGHBOR_OFFSETS.length;
 const ONE_DAY = 24 * 60 * 60;
@@ -32,35 +34,37 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		this.users = _.slice(this.accounts, 2);
 		this.market = this.contracts['UpcityMarket'];
 		this.game = this.contracts['UpcityGame'];
+		this.randomToken = () => _.sample(tokens);
+		this.randomUsers = (size=1) => _.sampleSize(this.users, size);
 		this.describeTile = describeTile;
 		this.buyTokens = buyTokens;
 		this.buildTower = buildTower;
 		this.buyTile = buyTile;
 		this.collect = collect;
 
-		// Deploy the market and game.
-		const cw = bn.int(bn.mul(constants.PRECISION, CONNECTOR_WEIGHT));
-		await this.market.new(cw);
-		const tx = await this.game.new();
-		// Deploy and init the tokens.
-		this.tokens = [];
-		for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
-			const token = this.contracts['UpcityResourceToken'].clone();
-			await token.new(name, symbol, RESERVE, [this.market.address]);
-			this.tokens.push(token);
+		// Deploy the game and market
+		await this.game.new();
+		await this.market.new();
+		// Deploy and init the token proxies.
+		const tokens = this.tokens = _.times(NUM_RESOURCES,
+			i => this.contracts['UpcityResourceTokenProxy'].clone());
+		for (let i = 0; i < NUM_RESOURCES; i++) {
+			const inst = tokens[i];
+			inst.NAME = `${TOKEN_NAME}-${i}`;
+			inst.SYMBOL = `${TOKEN_SYMBOL}-${i}`;
+			inst.IDX = i;
+			await inst
+				.new(inst.IDX, inst.NAME, inst.SYMBOL, this.market.address);
 		}
-		// Init the market.
-		const tokens = _.map(this.tokens, t => t.address);
+		// Initialize the market.
 		await this.market.init(
-			tokens,
-			[this.game.address],
-			{value: MARKET_DEPOSIT});
-		//  Init the game.
+			SUPPLY_LOCK, _.map(tokens, t => t.address), [this.game.address],
+			{value: INITIAL_FUNDS});
+		//  Initialize the game.
 		await this.game.init(
-			tokens,
 			this.market.address,
 			this.genesisPlayer,
-			[this.authority], );
+			[this.authority]);
 	});
 
 	beforeEach(async function() {
@@ -200,11 +204,24 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 	});
 });
 
+/// Utility Functions
 function test(desc, cb) {
 	it(desc, async function() {
 		const r = await cb.call(this);
 		printGasUsage(r.gasUsed || _.toNumber(r));
 	});
+}
+
+function printGasUsage(gasUsed) {
+	const f = gasUsed / HIGH_GAS;
+	let s = gasUsed.toString().bold;
+	if (f >= 1.0)
+		s = s.red;
+	else if (f <= 0.33)
+		s = s.green;
+	else
+		s = s.yellow;
+	console.log('\t' + s);
 }
 
 function decodeBlocks(encoded) {
@@ -221,6 +238,20 @@ function encodeBlocks(blocks) {
 		slots.push(i < blocks.length ? blocks[i]: 255);
 	return '0x'+_.map(_.reverse(slots),
 		n => bn.toHex(n, 2).substr(2)).join('');
+}
+
+function encodeName(name) {
+	return '0x'+ethjs.setLengthRight(Buffer.from(name), 16).toString('hex');
+}
+
+function decodeName(encoded) {
+	const buf = ethjs.toBuffer(encoded);
+	let end = 0;
+	for (; end < buf.length; end++) {
+		if (buf[end] == 0)
+			break;
+	}
+	return buf.slice(0, end).toString();
 }
 
 function unpackDescription(r) {
@@ -257,37 +288,57 @@ function toTileId(x, y) {
 	return ethjs.bufferToHex(data);
 }
 
+function getDistributions(tileInfos) {
+	const totals = _.reduce(tileInfos,
+		(t, ti) => {
+			const balances = [...ti.sharedResources, ti.funds];
+			return _.map(_.zip(balances, t), ([a, b]) => bn.add(a, b));
+		},
+		_.times(NUM_RESOURCES+1, i => '0')
+	);
+	return _.map(tileInfos,
+		ti => {
+			const balances = [...ti.sharedResources, ti.funds];
+			return bn.dp(bn.div(
+				bn.sum(_.map(_.zip(balances, totals),
+					([a, b]) => bn.div(a, b))), balances.length), 2);
+		}
+	);
+}
+
+function getTokenPurchaseCost(amount, supply, funds) {
+	let c = bn.div(bn.add(supply, amount), supply)
+	c = bn.pow(c, 1/CONNECTOR_WEIGHT);
+	c = bn.sub(c, 1);
+	c = bn.mul(c, funds);
+	return bn.round(c);
+}
+
 async function describeTile(x, y) {
 	return _.assign(
 		unpackDescription(await this.game.describeTile(x, y)),
 		{x: x, y: y});
 }
 
-async function buyTokens(whom, tokens, bonus=0.01) {
-	assert(_.isArray(tokens) && tokens.length == NUM_RESOURCES);
-	for (let res = 0; res < tokens.length; res++) {
-		const amount = tokens[res];
-		const token = this.tokens[res].address;
-		const {price, supply, funds} = await this.market.getState(token);
-		// Need to pay a little more to ensure we get enough.
-		const cost = bn.int(
-			bn.mul(getTokenPurchaseCost(amount, supply, funds), (1+bonus)));
-		const tx = await this.market.buy(
-			token,
-			whom,
-			{from: whom, value: cost}
-		);
-		const {bought} = tx.findEvent('Bought').args;
-		// Sell any excess.
-		if (bn.gt(bought, amount)) {
-			await this.market.sell(
-				token,
-				bn.sub(bought, amount),
-				whom,
-				{from: whom}
-			);
-		}
+async function buyTokens(whom, amounts, bonus=0.01) {
+	assert(_.isArray(amounts) && amounts.length == NUM_RESOURCES);
+	const states = await Promise.all(
+		_.map(this.tokens, t => this.market.getState(t.address)));
+	// Predict the cost of buying each token amount, with a little breathing
+	// room.
+	const costs = _.map(_.zip(states, amounts), ([s, a]) => bn.int(
+			bn.mul(getTokenPurchaseCost(a, s.supply, s.funds), (1+bonus))));
+	const tx = await this.market.buy(
+		costs, whom, {from: whom, value: bn.sum(costs)});
+	// Sell any excess tokens.
+	const sells = _.times(NUM_RESOURCES, i => '0');
+	for (let token of this.tokens) {
+		const amount = amounts[token.IDX];
+		const {bought} = tx.findEvent('Bought', {resource: token.address}).args;
+		if (bought)
+			sells[token.IDX] = bn.max(0, bn.sub(bought, amount));
 	}
+	await this.market.sell(sells, whom, {from: whom});
 }
 
 async function buildTower(x, y, blocks, caller=null) {
@@ -307,38 +358,4 @@ async function buyTile(x, y, player) {
 async function collect(x, y) {
 	const {owner} = await this.describeTile(x, y);
 	return this.game.collect(x, y, {from: owner});
-}
-
-function getTokenPurchaseCost(amount, supply, funds) {
-	let c = bn.div(bn.add(supply, amount), supply)
-	c = bn.pow(c, 1/CONNECTOR_WEIGHT);
-	c = bn.sub(c, 1);
-	c = bn.mul(c, funds);
-	return bn.round(c);
-}
-
-function encodeName(name) {
-	return '0x'+ethjs.setLengthRight(Buffer.from(name), 16).toString('hex');
-}
-
-function decodeName(encoded) {
-	const buf = ethjs.toBuffer(encoded);
-	let end = 0;
-	for (; end < buf.length; end++) {
-		if (buf[end] == 0)
-			break;
-	}
-	return buf.slice(0, end).toString();
-}
-
-function printGasUsage(gasUsed) {
-	const f = gasUsed / HIGH_GAS;
-	let s = gasUsed.toString().bold;
-	if (f >= 1.0)
-		s = s.red;
-	else if (f <= 0.33)
-		s = s.green;
-	else
-		s = s.yellow;
-	console.log('\t' + s);
 }
