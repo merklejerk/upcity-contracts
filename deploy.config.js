@@ -44,41 +44,42 @@ async function deploy({contracts, target, config}) {
 	const {
 		UpcityMarket: market,
 		UpcityGame: game,
-		UpcityResourceToken} = contracts;
-	// Deploy the market and game.
-	console.log('Deploying market...');
-	await market.new().confirmed(confirmations);
-	console.log(`\tDeployed to: ${market.address.blue.bold}`);
+		UpcityResourceTokenProxy} = contracts;
+	// Deploy the game and market.
 	console.log('Deploying game...');
 	await game.new().confirmed(confirmations);
 	console.log(`\tDeployed to: ${game.address.blue.bold}`);
+	console.log('Deploying market...');
+	await market.new().confirmed(confirmations);
+	console.log(`\tDeployed to: ${market.address.blue.bold}`);
 	// Deploy the tokens.
 	const tokens = [];
-	for (let [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
+	for (const [name, symbol] of _.zip(RESOURCE_NAMES, RESOURCE_SYMBOLS)) {
 		console.log(`Deploying resource token "${name}"...`);
-		const token = UpcityResourceToken.clone();
+		const token = UpcityResourceTokenProxy.clone();
 		await token.new(
-			name,
-			symbol,
-			bn.mul(TOKEN_RESERVE, '1e18'),
-			[market.address])
+				tokens.length,
+				name,
+				symbol,
+				market.address)
 			.confirmed(confirmations);
 		console.log(`\tDeployed to: ${token.address.blue.bold}`);
 		tokens.push(token);
 	}
-	// Init the market.
-	const tokenAddresses = _.map(tokens, t => t.address);
+	// Initialize the market.
 	console.log('Initializing the market...');
 	await market.init(
-		tokenAddresses,
-		[game.address],
-		{value: bn.mul(MARKET_DEPOSIT, '1e18')}).confirmed(confirmations);
+			bn.mul(TOKEN_RESERVE, '1e18'),
+			_.map(tokens, t => t.address),
+			[game.address],
+			{value: bn.mul(MARKET_DEPOSIT, '1e18')})
+		.confirmed(confirmations);
 	// Init the game.
 	console.log('Initializing the game...');
 	await game.init(
-		tokenAddresses,
-		market.address,
-		config.authorities[0],
-		config.authorities).confirmed(confirmations);
+			market.address,
+			config.authorities[0],
+			config.authorities)
+		.confirmed(confirmations);
 	console.log('All done.')
 }
