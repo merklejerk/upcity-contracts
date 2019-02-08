@@ -107,7 +107,7 @@ contract UpcityBase {
 	// The building cost multiplier for any block at a certain height, in ppm.
 	uint64[MAX_HEIGHT] internal BLOCK_HEIGHT_PREMIUM = [
 		$$(join(map(range(MAX_HEIGHT),
-		h => AS_UINT64(TO_PPM(BLOCK_HEIGHT_PREMIUM_BASE**h))), ARRAY_SEP))
+			h => AS_UINT64(TO_PPM(BLOCK_HEIGHT_PREMIUM_BASE**h))), ARRAY_SEP))
 	];
 	// The yield multiplier for any block at a certain height, in ppm.
 	uint64[MAX_HEIGHT] internal BLOCK_HEIGHT_BONUS = [

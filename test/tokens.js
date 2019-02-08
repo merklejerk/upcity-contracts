@@ -96,27 +96,43 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.deepEqual(actual, balances);
 	});
 
-	it('Authority can burn', async function() {
+	it('Authority can lock tokens', async function() {
 		const token = this.randomToken();
 		const [wallet] = this.randomUsers();
 		const amount = 100;
-		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		await this.market.mint(wallet, balances, {from: this.authority});
-		const burn = _.times(NUM_TOKENS, i => i == token.IDX ? 1 : 0);
-		await this.market.burn(wallet, burn, {from: this.authority});
-		const newBalances = await this.market.getBalances(wallet);
-		const expected = _.map(_.zip(balances, burn), a => bn.sub(a[0], a[1]));
-		assert.deepEqual(newBalances, expected);
+		await this.market.mint(wallet, _.times(NUM_TOKENS, i => amount),
+			{from: this.authority});
+		const lock = _.times(NUM_TOKENS, i => {
+			if (i == token.IDX)
+			 	return bn.int(bn.mul(Math.random(), amount));
+			return '0';
+		});
+		const tx = await this.market.lock(wallet, lock, {from: this.authority});
+		// Ensure wallet's tokens were moved to the market.
+		let balancesBefore = await this.market.getBalances(wallet,
+			{block: tx.blockNumber-1});
+		let balancesAfter = await this.market.getBalances(wallet);
+		let expected = _.map(_.zip(balancesBefore, lock), a => bn.sub(a[0], a[1]));
+		assert.deepEqual(balancesAfter, expected);
+		balancesBefore = await this.market.getBalances(this.market.address,
+			{block: tx.blockNumber-1});
+		balancesAfter = await this.market.getBalances(this.market.address);
+		expected = _.map(_.zip(balancesBefore, lock), a => bn.add(a[0], a[1]));
+		assert.deepEqual(balancesAfter, expected);
+		// Ensure that the supply is unchanged.
+		assert.deepEqual(
+			await this.market.getSupplies({from: tx.blockNumber-1}),
+			await this.market.getSupplies());
 	});
 
-	it('Non-authority cannot burn', async function() {
+	it('Non-authority cannot lock tokens', async function() {
 		const token = this.randomToken();
 		const [wallet, caller] = this.randomUsers(2);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
 		await this.market.mint(wallet, balances, {from: this.authority});
-		const burn = _.times(NUM_TOKENS, i => i == token.IDX ? 1 : 0);
-		await assert.rejects(this.market.burn(wallet, burn, {from: caller}),
+		const lock = _.times(NUM_TOKENS, i => i == token.IDX ? 1 : 0);
+		await assert.rejects(this.market.lock(wallet, lock, {from: caller}),
 			ERRORS.NOT_ALLOWED);
 	});
 
@@ -190,19 +206,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const newBalances = await this.market.getBalances(wallet);
 		const expected = _.map(_.zip(oldBalances, mint), a => bn.sum(a));
 		assert.deepEqual(newBalances, expected);
-	});
-
-	it('Burning reduces total supply', async function() {
-		const token = this.randomToken();
-		const [wallet] = this.randomUsers();
-		const oldSupplies = await this.market.getSupplies();
-		const amount = 100;
-		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		await this.market.mint(wallet, balances, {from: this.authority});
-		await this.market.burn(wallet, balances, {from: this.authority});
-		const newSupplies = await this.market.getSupplies();
-		const expected = oldSupplies;
-		assert.deepEqual(newSupplies, oldSupplies);
 	});
 
 	it('Cannot transfer more than balance', async function() {
@@ -342,81 +345,47 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			bn.sub(MAX_UINT, amount));
 	});
 
-	it('Transfer to 0x0 burns tokens', async function() {
+	it('token transfer to 0x0 is not allowed', async function() {
 		const token = this.randomToken();
 		const [spender, receiver] = _.sampleSize(this.users, 2);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		const oldSupply = await token.totalSupply();
 		await this.market.mint(spender, balances, {from: this.authority});
-		await token.transfer(ZERO_ADDRESS, amount, {from: spender});
-		assert.equal(
-			await token.balanceOf(ZERO_ADDRESS),
-			0);
-		assert.equal(
-			await token.balanceOf(spender),
-			0);
-		assert.equal(
-			await token.totalSupply(),
-			oldSupply);
+		await assert.rejects(
+			token.transfer(ZERO_ADDRESS, amount, {from: spender}), ERRORS.INVALID);
 	});
 
-	it('Transfer to contract burns tokens', async function() {
+	it('token transfer to token contract is not allowed', async function() {
 		const token = this.randomToken();
 		const [spender, receiver] = _.sampleSize(this.users, 2);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		const oldSupply = await token.totalSupply();
 		await this.market.mint(spender, balances, {from: this.authority});
-		await token.transfer(token.address, amount, {from: spender});
-		assert.equal(
-			await token.balanceOf(ZERO_ADDRESS),
-			0);
-		assert.equal(
-			await token.balanceOf(spender),
-			0);
-		assert.equal(
-			await token.totalSupply(),
-			oldSupply);
+		await assert.rejects(
+			token.transfer(token.address, amount, {from: spender}), ERRORS.INVALID);
 	});
 
-	it('transferFrom to 0x0 burns tokens', async function() {
+	it('transferFrom to 0x0 is not allowed', async function() {
 		const token = this.randomToken();
 		const [spender, wallet, receiver] = _.sampleSize(this.users, 3);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		const oldSupply = await token.totalSupply();
 		await this.market.mint(wallet, balances, {from: this.authority});
 		await token.approve(spender, amount, {from: wallet});
-		await token.transferFrom(wallet, ZERO_ADDRESS, amount, {from: spender});
-		assert.equal(
-			await token.balanceOf(ZERO_ADDRESS),
-			0);
-		assert.equal(
-			await token.balanceOf(spender),
-			0);
-		assert.equal(
-			await token.totalSupply(),
-			oldSupply);
+		await assert.rejects(
+			token.transferFrom(wallet, ZERO_ADDRESS, amount, {from: spender}),
+			ERRORS.INVALID);
 	});
 
-	it('Transfer to contract burns tokens', async function() {
+	it('transferFrom to token contract is not allowed', async function() {
 		const token = this.randomToken();
 		const [spender, wallet, receiver] = _.sampleSize(this.users, 3);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		const oldSupply = await token.totalSupply();
 		await this.market.mint(wallet, balances, {from: this.authority});
 		await token.approve(spender, amount, {from: wallet});
-		await token.transferFrom(wallet, token.address, amount, {from: spender});
-		assert.equal(
-			await token.balanceOf(ZERO_ADDRESS),
-			0);
-		assert.equal(
-			await token.balanceOf(spender),
-			0);
-		assert.equal(
-			await token.totalSupply(),
-			oldSupply);
+		await assert.rejects(
+			token.transferFrom(wallet, token.address, amount, {from: spender}),
+			ERRORS.INVALID);
 	});
 });

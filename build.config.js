@@ -11,7 +11,8 @@ const SOURCE_UNITS = [
 module.exports = {
 	"test": {
 		units: [...SOURCE_UNITS, 'test/*.sol'],
-		defs:  _.assign({}, CONSTANTS, {"TEST": 1})
+		defs:  _.assign({}, CONSTANTS, {"TEST": 1}),
+		optimizer: 200
 	},
 	"release": {
 		units: SOURCE_UNITS,

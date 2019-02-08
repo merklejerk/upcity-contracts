@@ -17,7 +17,7 @@ const {
  	CONNECTOR_WEIGHT } = constants;
 const BLOCKS = _.times(NUM_RESOURCES);
 const SUPPLY_LOCK = bn.mul(100, ONE_TOKEN);
-const INITIAL_FUNDS = bn.mul(1, ONE_TOKEN);
+const INITIAL_FUNDS = bn.mul(0.1, ONE_TOKEN);
 const TOKEN_NAME = 'TestToken';
 const TOKEN_SYMBOL = 'TTKN';
 const NEIGHBOR_OFFSETS = [[1,0], [1,-1], [0,-1], [-1,0], [-1,1], [0,1]];
@@ -109,6 +109,20 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await this.game.__advanceTime(ONE_DAY);
 			return this.buyTile(x, y, buyer);
 		});
+		
+		test('owned, MAX_HEIGHT tile, 6 MAX_HEIGHT neighbors', async function() {
+			const [x, y] = [0, 0];
+			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
+			for (const [nx, ny] of NEIGHBOR_OFFSETS) {
+				await this.buyTile(x + nx, y + ny, _.sample(this.users));
+				const tx = await this.buildTower(x + nx, y + ny, blocks);
+			}
+			const [buyer] = _.sampleSize(this.users, 1);
+			await this.buildTower(x, y, blocks);
+			await this.game.__advanceTime(ONE_DAY);
+			return this.buyTile(x, y, buyer);
+		});
+
 	});
 
 	describe('collect', function() {
@@ -341,13 +355,13 @@ async function buyTokens(whom, amounts, bonus=0.01) {
 	await this.market.sell(sells, whom, {from: whom});
 }
 
-async function buildTower(x, y, blocks, caller=null) {
+async function buildTower(x, y, blocks, caller=null, gasOnly=false) {
 	if (!caller)
 		caller = (await this.describeTile(x, y)).owner;
 	let cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
 	await this.buyTokens(caller, cost);
 	return this.game.buildBlocks(x, y, encodeBlocks(blocks),
-		{from: caller});
+		{from: caller, gasOnly: gasOnly});
 }
 
 async function buyTile(x, y, player) {

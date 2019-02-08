@@ -128,6 +128,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 			token.token = addr;
 			token.idx = i;
 			token.supply = supplyLock;
+			token.balances[address(this)] = supplyLock;
 			token.funds = msg.value / NUM_RESOURCES;
 			token.priceYesterday = _getTokenPrice(
 				token.funds, supplyLock);
@@ -209,16 +210,9 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 			address from, address to, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyToken {
 
-		// Transfers to 0x0 or to a token address are burns.
-		if (to == ZERO_ADDRESS || _tokens[to].token != ZERO_ADDRESS) {
-			// #for RES in range(NUM_RESOURCES)
-			_burn(_tokens[_tokenAddresses[$(RES)]], from, amounts[$(RES)]);
-			// #done
-		} else {
-			// #for RES in range(NUM_RESOURCES)
-			_transfer(_tokens[_tokenAddresses[$(RES)]], from, to, amounts[$(RES)]);
-			// #done
-		}
+		// #for RES in range(NUM_RESOURCES)
+		_transfer(_tokens[_tokenAddresses[$(RES)]], from, to, amounts[$(RES)]);
+		// #done
 	}
 
 	/// @dev Buy tokens with ether.
@@ -279,17 +273,18 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		return value;
 	}
 
-	/// @dev Burn tokens.
-	/// Burn a number of every of the token supported, from an owner.
+	/// @dev lock up tokens.
+	/// Take tokens from an owner and transfer them to this contract, locking
+	/// them up permanently.
 	/// Only an authority may call this.
-	/// @param from The owner whose tokens will be burned.
-	/// @param amounts The number of each token to burn, in canonical order.
-	function burn(address from, uint256[NUM_RESOURCES] calldata amounts)
+	/// @param from The owner whose tokens will be locked.
+	/// @param amounts The number of each token to locked, in canonical order.
+	function lock(address from, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyAuthority {
 
-		_touch();
 		// #for RES in range(NUM_RESOURCES)
-		_burn(_tokens[_tokenAddresses[$(RES)]], from, amounts[$(RES)]);
+		_transfer(_tokens[_tokenAddresses[$(RES)]], from, address(this),
+			amounts[$(RES)]);
 		// #done
 	}
 

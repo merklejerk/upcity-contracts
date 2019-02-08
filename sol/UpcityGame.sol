@@ -242,7 +242,7 @@ contract UpcityGame is
 		tile.blocks = _assignBlocks(tile.blocks, blocks, tile.height, count);
 		tile.height += count;
 		// Burn the costs.
-		_market.burn(msg.sender, cost);
+		_market.lock(msg.sender, cost);
 		emit Built(tile.id, tile.owner, tile.blocks);
 	}
 
@@ -351,14 +351,15 @@ contract UpcityGame is
 		uint64[NUM_RESOURCES] memory blockTotals =
 			$$(map(range(NUM_RESOURCES), (R) => `_blockStats[${R}].count`));
 		uint8 count = 0;
+		uint8 baseHeight = tile.height;
 		for (; count < MAX_HEIGHT; count++) {
 			uint8 b = uint8(uint128(blocks));
 			blocks = blocks >> 8;
 			if (!_isValidBlock(b))
 				break;
-			require(_isValidHeight(tile.height + count + 1), ERROR_MAX_HEIGHT);
+			require(_isValidHeight(baseHeight + count + 1), ERROR_MAX_HEIGHT);
 			uint256[NUM_RESOURCES] memory bc = _getBlockCost(
-				b, blockTotals[b], tile.height + count);
+				b, blockTotals[b], baseHeight + count);
 			// #for N in range(NUM_RESOURCES)
 			cost[$$(N)] = cost[$$(N)].add(bc[$$(N)]);
 			// #done
@@ -534,6 +535,7 @@ contract UpcityGame is
 			private {
 
 		// Compute how much each neighbor is entitled to.
+		uint8 neighborCloutsTotal = tile.neighborCloutsTotal;
 		uint256 sharedFunds = _toTaxes(funds);
 		uint256[NUM_RESOURCES] memory sharedResources =
 			$$(map(range(NUM_RESOURCES), (R) => `_toTaxes(resources[${R}])`));
@@ -541,9 +543,9 @@ contract UpcityGame is
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
 			(int32 ox, int32 oy) = $(NEIGHBOR_OFFSET(i));
 			Tile storage neighbor = _getExistingTileAt(tile.x + ox, tile.y + oy);
-			// Normalization factor so that taller towers receive more.
+			// Scaling factor so that taller towers receive more.
 			uint64 clout = ((neighbor.height + 1) * PPM_ONE)
-				/ tile.neighborCloutsTotal;
+				/ neighborCloutsTotal;
 			// If the tile is owned, share resources and funds.
 			if (neighbor.owner != ZERO_ADDRESS) {
 				// #for RES in range(NUM_RESOURCES)
@@ -552,11 +554,10 @@ contract UpcityGame is
 						(clout * sharedResources[$$(RES)]) / PPM_ONE);
 				// #done
 				neighbor.sharedFunds = neighbor.sharedFunds.add(
-					clout * sharedFunds / PPM_ONE);
+					(clout * sharedFunds) / PPM_ONE);
 			} else {
 				// If the tile is unowned, keep the funds as fees.
-				fees = fees.add(
-					(clout * sharedFunds) / PPM_ONE);
+				fees = fees.add((clout * sharedFunds) / PPM_ONE);
 			}
 		}
 	}

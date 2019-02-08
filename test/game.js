@@ -611,24 +611,28 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				ERRORS.INSUFFICIENT);
 		});
 
-		it('building blocks burn resources', async function() {
+		it('building blocks locks resources', async function() {
 			const player = this.genesisPlayer;
 			const [x, y] = [0, 0];
 			const blocks = _.times(_.random(1, MAX_HEIGHT), i => _.sample(BLOCKS));
-			const initialSupplies = await Promise.all(
-				_.map(this.tokens, token => token.totalSupply()));
+			const cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
 			const tx = await this.buildTower(x, y, blocks, player);
-			const transfers = tx.findEvents('Transfer');
-			for (let xfr of transfers) {
-				assert.equal(xfr.args.to, ZERO_ADDRESS);
-				assert.equal(xfr.args.from, player);
-			}
-			const bals = await Promise.all(
-				_.map(BLOCKS, b => this.tokens[b].balanceOf(player)));
-			assert.deepEqual(bals, ['0', '0', '0']);
-			const supplies = await Promise.all(
-				_.map(this.tokens, token => token.totalSupply()));
-			assert.deepEqual(supplies, initialSupplies);
+			// Check that the balance of the market increased by cost and
+			// the balance of player decreased by cost.
+			let balanceBefore = await this.market.getBalances(
+				this.market.address, {block: tx.blockNumber-1});
+			let balanceAfter = await this.market.getBalances(
+				this.market.address);
+			let expected = _.map(_.zip(balanceBefore, cost),
+				a => bn.add(a[0], a[1]));
+			assert.deepEqual(balanceAfter, expected);
+			balanceBefore = await this.market.getBalances(
+				player, {block: tx.blockNumber-1});
+			balanceAfter = await this.market.getBalances(
+				player);
+			expected = _.map(_.zip(balanceBefore, cost),
+				a => bn.sub(a[0], a[1]));
+			assert.deepEqual(balanceAfter, expected);
 		});
 
 		it('building on a tile first does a collect', async function() {

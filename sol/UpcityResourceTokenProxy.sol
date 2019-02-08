@@ -123,6 +123,7 @@ contract UpcityResourceTokenProxy is
 	function _transfer(address from, address to, uint256 amt)
 			private {
 
+		require(to != address(0x0) && to != address(this), ERROR_INVALID);
 		uint256[NUM_RESOURCES] memory amts = $$(UINT256_ARRAY(3, 0));
 		amts[_marketIndex] = amt;
 		// This should revert if the balances are insufficient.
