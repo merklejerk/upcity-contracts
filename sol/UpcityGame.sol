@@ -198,8 +198,8 @@ contract UpcityGame is
 		address oldOwner = tile.owner;
 		tile.owner = msg.sender;
 		tile.timesBought += 1;
-		// Base price increases every time a tile is bought.
-		tile.basePrice = (tile.basePrice * PURCHASE_MARKUP) / PPM_ONE;
+		// Price multiplier increases every time a tile is bought.
+		tile.priceMultiplier = (tile.priceMultiplier * PURCHASE_MARKUP) / PPM_ONE;
 		// Create the neighboring tiles.
 		_createNeighbors(tile.x, tile.y);
 		// Share with neighbors.
@@ -230,19 +230,20 @@ contract UpcityGame is
 		// Must be owned by caller.
 		require(tile.owner == msg.sender, ERROR_RESTRICTED);
 		// Get the costs and count of the new blocks.
-		(uint256[NUM_RESOURCES] memory cost, uint8 count) =
+		(uint256[NUM_RESOURCES] memory costs, uint8 count) =
 			_getBuildCostAndCount(tile, blocks);
 		// Empty blocks aren't allowed.
 		require(count > 0, ERROR_INVALID);
 		// Building beyond the maximum height is not allowed.
 		require(_isValidHeight(tile.height + count), ERROR_MAX_HEIGHT);
-		_incrementTileScores(tile, blocks, count);
-		_incrementNeighborCloutTotals(tile, count);
-		_incrementBlockStats(blocks, count);
+		_increaseTileScores(tile, blocks, count);
+		_increaseTileBuildCosts(tile, costs);
+		_increaseNeighborCloutTotals(tile, count);
+		_increaseBlockStats(blocks, count);
 		tile.blocks = _assignBlocks(tile.blocks, blocks, tile.height, count);
 		tile.height += count;
 		// Burn the costs.
-		_market.lock(msg.sender, cost);
+		_market.lock(msg.sender, costs);
 		emit Built(tile.id, tile.owner, tile.blocks);
 	}
 
@@ -370,8 +371,9 @@ contract UpcityGame is
 
 	/// @dev Update a tile's resource scores given new blocks to append.
 	/// @param tile The tile.
-	/// @param blocks the blocks to append.
-	function _incrementTileScores(Tile storage tile, bytes16 blocks, uint8 count)
+	/// @param blocks the new blocks built
+	/// @param count The number of new blocks built
+	function _increaseTileScores(Tile storage tile, bytes16 blocks, uint8 count)
 			private {
 
 		for (uint8 h = 0; h < count; h++) {
@@ -382,10 +384,22 @@ contract UpcityGame is
 		}
 	}
 
+	/// @dev Update a tile's block costs
+	/// @param tile The tile.
+	/// @param costs the resource cost of building the new blocks
+	function _increaseTileBuildCosts(
+			Tile storage tile, uint256[NUM_RESOURCES] memory costs)
+			private {
+
+		// #for RES in range(NUM_RESOURCES)
+		tile.buildCosts[$$(RES)] += costs[$$(RES)];
+		// #done
+	}
+
 	/// @dev Update the clout totals for each neighbor of a given tile.
 	/// @param center The center tile.
 	/// @param amount The extra clout (height) the center tile gained .
-	function _incrementNeighborCloutTotals(Tile storage center, uint8 amount)
+	function _increaseNeighborCloutTotals(Tile storage center, uint8 amount)
 			private {
 
 		for (uint8 i = 0; i < NUM_NEIGHBORS; i++) {
@@ -406,7 +420,6 @@ contract UpcityGame is
 	function _getTileYield(Tile storage tile, uint64 when)
 			private view returns (uint256[NUM_RESOURCES] memory produced) {
 
-		assert(tile.id != 0x0);
 		require(when >= tile.lastTouchTime, ERROR_TIME_TRAVEL);
 		uint64 seasonBonus = _isTileInSeason(tile) ? SEASON_YIELD_BONUS : PPM_ONE;
 		uint64 dt = when - tile.lastTouchTime;
@@ -430,7 +443,6 @@ contract UpcityGame is
 	function _getBlockCost(uint8 _block, uint64 globalTotal, uint8 height)
 			private view returns (uint256[NUM_RESOURCES] memory) {
 
-		assert(_isValidBlock(_block) && _isValidHeight(height));
 		uint256 c = $(MAX(globalTotal, 1));
 		uint256 a = RESOURCE_ALPHAS[_block];
 		uint256 s = BLOCK_HEIGHT_PREMIUM[height] * $(MAX(c * a, PPM_ONE));
@@ -454,7 +466,7 @@ contract UpcityGame is
 			tile.x = x;
 			tile.y = y;
 			tile.blocks = EMPTY_BLOCKS;
-			tile.basePrice = MINIMUM_TILE_PRICE;
+			tile.priceMultiplier = PPM_ONE;
 			// No need to iterate over neighbors to get accurate clouts since we know
 			// tiles are only created when an unowned edge tile is bought, so its
 			// only existing neighbor should be empty.
@@ -501,7 +513,7 @@ contract UpcityGame is
 	/// This will adjust the total counts, production rates, and total scores.
 	/// @param blocks Right-aligned, packed representation of blocks to append.
 	/// @param count The number of blocks packed in 'blocks'.
-	function _incrementBlockStats(bytes16 blocks, uint8 count) private {
+	function _increaseBlockStats(bytes16 blocks, uint8 count) private {
 		for (uint8 h = 0; h < count; h++) {
 			// Pop each block off the tower.
 			uint8 b = uint8(uint128(blocks));
@@ -618,24 +630,20 @@ contract UpcityGame is
 	/// This is a sum of the base price for a tile (which increases
 	/// with every purchase of the tile) and the materials costs of each block
 	/// built on the tile at current market prices.
+	/// @param tile The tile object.
+	/// @param marketPrices The current market price of each resource.
 	function _getIsolatedTilePrice(
 			Tile storage tile,
 			uint256[NUM_RESOURCES] memory marketPrices)
-			private view returns (uint256) {
+			private view returns (uint256 price) {
 
-		uint256 price = tile.basePrice;
-		bytes16 blocks = tile.blocks;
-		for (uint8 h = 0; h < tile.height; h++) {
-			// Pop each block off the tower.
-			uint8 b = uint8(uint128(blocks));
-			blocks = blocks >> 8;
-			uint256[NUM_RESOURCES] memory bc =
-				_getBlockCost(b, _blockStats[b].count, h);
-			// #for RES in range(NUM_RESOURCES)
-			price = price.add(marketPrices[$(RES)].mul(bc[$(RES)]) / ONE_TOKEN);
-			// #done
-		}
-		return price;
+		assert(tile.id != 0x0);
+		price = 0;
+		// #for RES in range(NUM_RESOURCES)
+		// price += market_price * buildCost
+		price = price.add(marketPrices[$(RES)].mul(tile.buildCosts[$(RES)]));
+		// #done
+		price = price / ONE_TOKEN + BASE_TILE_PRICE * tile.priceMultiplier;
 	}
 
 	/// @dev Do a direct transfer of ether to someone.

@@ -40,13 +40,14 @@ contract UpcityBase {
 		int32 y;
 		// The name of the tile.
 		bytes16 name;
-		// The "base" price of a tile, NOT including neighborhood bonus,
-		// resource costs, and seasonal bonus. This goes up every time a
-		// tile is bought.
-		uint256 basePrice;
+		// The price multiplier for a tile, which compounds by PURCHASE_MARKUP
+		// every time a tile is bought.
+		uint256 priceMultiplier;
 		// The aggregated shared resources from neighbor tiles after
 		// they do a collect().
 		uint256[NUM_RESOURCES] sharedResources;
+		// The aggregated build costs for the tower on this tile.
+		uint256[NUM_RESOURCES] buildCosts;
 		// The aggregated shared ether from neighbor tiles. after they
 		// do a collect().
 		uint256 sharedFunds;
@@ -89,7 +90,7 @@ contract UpcityBase {
 	// The ratio of collected resources to share with neighbors, in ppm.
 	uint64 internal constant TAX_RATE = $$(TO_PPM(TAX_RATE));
 	// The minimum tile price.
-	uint256 internal constant MINIMUM_TILE_PRICE = $$(uint256(ONE_TOKEN * MINIMUM_TILE_PRICE));
+	uint256 internal constant BASE_TILE_PRICE = $$(uint256(ONE_TOKEN * BASE_TILE_PRICE));
 	// How much to increase the base tile price every time it's bought, in ppm.
 	uint64 internal constant PURCHASE_MARKUP = $$(TO_PPM(1+PURCHASE_MARKUP));
 	// Scaling factor for global production limits.
