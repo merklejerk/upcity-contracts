@@ -151,7 +151,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const name = 'foobar';
 			await assert.rejects(
 				this.game.rename(x, y, encodeName(name), {from: player}),
-				ERRORS.NOT_ALLOWED);
+				ERRORS.RESTRICTED);
 		});
 	});
 
@@ -598,7 +598,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const [x, y] = [0, 0];
 			const blocks = encodeBlocks([BLOCKS[0]]);
 			await assert.rejects(this.game.buildBlocks(x, y, blocks),
-				ERRORS.NOT_ALLOWED);
+				ERRORS.RESTRICTED);
 		});
 
 		it('cannot build without sufficient resources', async function() {

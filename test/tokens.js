@@ -85,7 +85,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
 		await assert.rejects(this.market.mint(wallet, balances, {from: caller}),
-			ERRORS.NOT_ALLOWED);
+			ERRORS.RESTRICTED);
 	});
 
 	it('Authority can mint multiple tokens at once', async function() {
@@ -133,18 +133,18 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.mint(wallet, balances, {from: this.authority});
 		const lock = _.times(NUM_TOKENS, i => i == token.IDX ? 1 : 0);
 		await assert.rejects(this.market.lock(wallet, lock, {from: caller}),
-			ERRORS.NOT_ALLOWED);
+			ERRORS.RESTRICTED);
 	});
 
-	it('Authority cannot call market transfer', async function() {
+	it('Authority cannot call market proxyTransfer', async function() {
 		const token = this.randomToken();
 		const [wallet, dst] = this.randomUsers(2);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
 		await this.market.mint(wallet, balances, {from: this.authority});
 		await assert.rejects(
-			this.market.transfer(wallet, dst, balances, {from: this.authority}),
-			ERRORS.NOT_ALLOWED);
+			this.market.proxyTransfer(wallet, dst, amount,
+				{from: this.authority}), ERRORS.RESTRICTED);
 	});
 
 	it('Users cannot call market transfer', async function() {
@@ -155,13 +155,24 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.market.mint(wallet, balances, {from: this.authority});
 		await assert.rejects(
 			this.market.transfer(wallet, dst, balances, {from: wallet}),
-			ERRORS.NOT_ALLOWED);
+			ERRORS.RESTRICTED);
 		await assert.rejects(
 			this.market.transfer(wallet, dst, balances, {from: dst}),
-			ERRORS.NOT_ALLOWED);
+			ERRORS.RESTRICTED);
 		await assert.rejects(
 			this.market.transfer(wallet, dst, balances, {from: rando}),
-			ERRORS.NOT_ALLOWED);
+			ERRORS.RESTRICTED);
+	});
+
+	it('Users cannot call market proxyTransfer', async function() {
+		const token = this.randomToken();
+		const [wallet, dst, rando] = this.randomUsers(3);
+		const amount = 100;
+		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
+		await this.market.mint(wallet, balances, {from: this.authority});
+		await assert.rejects(
+			this.market.proxyTransfer(wallet, dst, amount, {from: wallet}),
+			ERRORS.RESTRICTED);
 	});
 
 	it('token.balanceOf returns slice of market.getBalance', async function() {
