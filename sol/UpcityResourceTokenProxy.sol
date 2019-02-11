@@ -27,24 +27,17 @@ contract UpcityResourceTokenProxy is
 	/// @dev Spending allowances for each spender for a wallet.
 	/// The mapping order is wallet -> spender -> allowance.
 	mapping(address=>mapping(address=>uint256)) private _allowances;
-	/// @dev The canonincal index of the token resource in the market.
-	uint8 private _marketIndex;
-
 
 	/// @dev Creates the contract.
-	/// @param idx The permanent index of the token in the market.
 	/// @param _name Token name
 	/// @param _symbol Token symbol
 	/// @param market The market address.
 	constructor(
-			uint8 idx,
 			string memory _name,
 			string memory _symbol,
 			address market)
 			public {
 
-		require(idx < $(NUM_RESOURCES), ERROR_INVALID);
-		_marketIndex = idx;
 		name = _name;
 		symbol = _symbol;
 		_market = IMarket(market);
@@ -54,7 +47,7 @@ contract UpcityResourceTokenProxy is
 	/// @return The current supply of tokens (in wei).
 	function totalSupply() external view returns (uint256) {
 		// Query the market.
-		return _market.getSupplies()[_marketIndex];
+		return _market.getSupply(address(this));
 	}
 
 	/// @dev Get the token balance of an address.
@@ -62,7 +55,7 @@ contract UpcityResourceTokenProxy is
 	/// @return The balance of an address (in wei).
 	function balanceOf(address who) external view returns (uint256) {
 		// Query the market.
-		return _market.getBalances(who)[_marketIndex];
+		return _market.getBalance(address(this), who);
 	}
 
 	/// @dev Get the spending allowance for a spender and owner pair.
@@ -124,10 +117,8 @@ contract UpcityResourceTokenProxy is
 			private {
 
 		require(to != address(0x0) && to != address(this), ERROR_INVALID);
-		uint256[NUM_RESOURCES] memory amts = $$(UINT256_ARRAY(3, 0));
-		amts[_marketIndex] = amt;
 		// This should revert if the balances are insufficient.
-		_market.transfer(from, to, amts);
+		_market.proxyTransfer(from, to, amt);
 		emit Transfer(from, to, amt);
 	}
 }

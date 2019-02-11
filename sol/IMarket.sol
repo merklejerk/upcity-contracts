@@ -12,6 +12,12 @@ contract IMarket {
 		external view returns (uint256[NUM_RESOURCES] memory supplies);
 	function getBalances(address who)
 		external view returns (uint256[NUM_RESOURCES] memory balances);
+	function getSupply(address token) external view returns (uint256 supply);
+	function getBalance(address token, address who)
+		external view returns (uint256 balance);
+	function proxyTransfer(
+		address from, address to, uint256 amount)
+		external;
 	function transfer(
 		address from, address to, uint256[NUM_RESOURCES] calldata amounts)
 		external;

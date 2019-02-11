@@ -35,7 +35,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			inst.SYMBOL = `${TOKEN_SYMBOL}-${i}`;
 			inst.IDX = i;
 			await inst
-				.new(inst.IDX, inst.NAME, inst.SYMBOL, market.address);
+				.new(inst.NAME, inst.SYMBOL, market.address);
 		}
 		// Initialize the market.
 		await market.init(

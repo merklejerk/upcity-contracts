@@ -189,9 +189,20 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		// #done
 	}
 
+	/// @dev Get the current supply of a token.
+	/// @param resource Address of the resource token contract.
+	/// @return The supply the resource, in wei, in canonical order.
+	function getSupply(address resource) external view returns (uint256) {
+
+		Token storage token = _tokens[resource];
+		require(resource != ZERO_ADDRESS && token.token == resource,
+			ERROR_INVALID);
+		return token.supply;
+	}
+
 	/// @dev Get the balances all tokens for `owner`.
 	/// @param owner The owner of the tokens.
-	/// @return The amount of of each resource held by `owner`, in wei, in
+	/// @return The amount of each resource held by `owner`, in wei, in
 	/// canonical order.
 	function getBalances(address owner)
 			external view returns (uint256[NUM_RESOURCES] memory balances) {
@@ -201,14 +212,42 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		// #done
 	}
 
-	/// @dev Tansfer tokens between owners.
+	/// @dev Get the balance of a token for `owner`.
+	/// @param resource Address of the resource token contract.
+	/// @param owner The owner of the tokens.
+	/// @return The amount of the given token held by `owner`.
+	function getBalance(address resource, address owner)
+			external view returns (uint256) {
+
+		Token storage token = _tokens[resource];
+		require(resource != ZERO_ADDRESS && token.token == resource,
+			ERROR_INVALID);
+		return token.balances[owner];
+	}
+
+	/// @dev Transfer a resource tokens between owners.
 	/// Can only be called by a token contract.
+	/// The resource/token address is msg.sender.
+	/// @param from The owner wallet.
+	/// @param to The receiving wallet
+	/// @param amount Amount of the token to transfer.
+	function proxyTransfer(
+			address from, address to, uint256 amount)
+			external onlyInitialized onlyToken {
+
+		Token storage token = _tokens[msg.sender];
+		assert(token.token == msg.sender);
+		_transfer(token, from, to, amount);
+	}
+
+	/// @dev Tansfer tokens between owners.
+	/// Can only be called by an authority.
 	/// @param from The owner wallet.
 	/// @param to The receiving wallet
 	/// @param amounts Amount of each token to transfer.
 	function transfer(
 			address from, address to, uint256[NUM_RESOURCES] calldata amounts)
-			external onlyInitialized onlyToken {
+			external onlyInitialized onlyAuthority {
 
 		// #for RES in range(NUM_RESOURCES)
 		_transfer(_tokens[_tokenAddresses[$(RES)]], from, to, amounts[$(RES)]);
@@ -338,6 +377,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 			Token storage token, address from, address to, uint256 amount)
 			private {
 
+		assert(token.token != ZERO_ADDRESS);
 		require(token.balances[from] >= amount, ERROR_INSUFFICIENT);
 		assert(token.supply + amount >= amount);
 		token.balances[from] -= amount;
