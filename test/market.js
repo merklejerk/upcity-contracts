@@ -69,7 +69,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	it('Cannot get the market state of an unknown token', async function() {
 		const token = testbed.randomAddress();
-		await assert.rejects(this.market.getState(token), ERRORS.INVALID);
+		await assert.rejects(this.market.describeToken(token), ERRORS.INVALID);
 	});
 
 	it('Can get the price of all tokens', async function() {
@@ -80,7 +80,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 
 	it('Can get the market state of a valid token', async function() {
 		const token = _.sample(this.tokens).address;
-		const state = await this.market.getState(token);
+		const state = await this.market.describeToken(token);
 		assert(bn.gt(state.price, 0));
 		assert(bn.gt(state.supply, 0));
 		assert(bn.gt(state.funds, 0));

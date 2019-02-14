@@ -51,25 +51,25 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		await this.restoreSnapshot(this.snapshotId);
 	});
 
-	it('Can get the token name', async function() {
+	it('can get the token name', async function() {
 		const token = this.randomToken();
 		const name = await token.name();
 		assert.equal(name, token.NAME);
 	});
 
-	it('Can get the token symbol', async function() {
+	it('can get the token symbol', async function() {
 		const token = this.randomToken();
 		const sym = await token.symbol();
 		assert.equal(sym, token.SYMBOL);
 	});
 
-	it('Can get the authority', async function() {
+	it('can get the authority', async function() {
 		assert.equal(
 			await this.market.isAuthority(this.authority),
 			true);
 	});
 
-	it('Authority can mint', async function() {
+	it('authority can mint', async function() {
 		const token = this.randomToken();
 		const [wallet] = this.randomUsers();
 		const amount = 100;
@@ -79,7 +79,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.deepEqual(newBalances, balances);
 	});
 
-	it('Non-authority cannot mint', async function() {
+	it('non-authority cannot mint', async function() {
 		const token = this.randomToken();
 		const [wallet, caller] = this.randomUsers(2);
 		const amount = 100;
@@ -88,7 +88,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			ERRORS.RESTRICTED);
 	});
 
-	it('Authority can mint multiple tokens at once', async function() {
+	it('authority can mint multiple tokens at once', async function() {
 		const [wallet] = this.randomUsers();
 		const balances = _.times(NUM_TOKENS, i => _.random(1, 100));
 		await this.market.mint(wallet, balances, {from: this.authority});
@@ -96,47 +96,83 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.deepEqual(actual, balances);
 	});
 
-	it('Authority can lock tokens', async function() {
+	it('minting first depletes stashed tokens', async function() {
+		const token = this.randomToken();
+		const [wallet] = this.randomUsers();
+		const amount = 100;
+		const stash = _.random(0, amount-1);
+		await this.market.mint(wallet,
+			_.times(NUM_TOKENS, i => i == token.IDX ? stash : 0),
+			{from: this.authority});
+		await this.market.stash(wallet,
+			_.times(NUM_TOKENS, i => i == token.IDX ? stash : 0 ),
+			{from: this.authority});
+		assert.equal((await this.market.describeToken(token.address)).stash, stash);
+		await this.market.mint(wallet,
+			_.times(NUM_TOKENS, i => i == token.IDX ? amount : 0 ),
+			{from: this.authority});
+		const bal = await this.market.getBalance(token.address, wallet);
+		assert.equal(bal, amount);
+		assert.equal((await this.market.describeToken(token.address)).stash, 0);
+	});
+
+	it('authority can stash tokens', async function() {
 		const token = this.randomToken();
 		const [wallet] = this.randomUsers();
 		const amount = 100;
 		await this.market.mint(wallet, _.times(NUM_TOKENS, i => amount),
 			{from: this.authority});
-		const lock = _.times(NUM_TOKENS, i => {
+		const stash = _.times(NUM_TOKENS, i => {
 			if (i == token.IDX)
 			 	return bn.int(bn.mul(Math.random(), amount));
 			return '0';
 		});
-		const tx = await this.market.lock(wallet, lock, {from: this.authority});
+		const tx = await this.market.stash(wallet, stash, {from: this.authority});
 		// Ensure wallet's tokens were moved to the market.
 		let balancesBefore = await this.market.getBalances(wallet,
 			{block: tx.blockNumber-1});
 		let balancesAfter = await this.market.getBalances(wallet);
-		let expected = _.map(_.zip(balancesBefore, lock), a => bn.sub(a[0], a[1]));
+		let expected = _.map(_.zip(balancesBefore, stash), a => bn.sub(a[0], a[1]));
 		assert.deepEqual(balancesAfter, expected);
-		balancesBefore = await this.market.getBalances(this.market.address,
-			{block: tx.blockNumber-1});
-		balancesAfter = await this.market.getBalances(this.market.address);
-		expected = _.map(_.zip(balancesBefore, lock), a => bn.add(a[0], a[1]));
-		assert.deepEqual(balancesAfter, expected);
+		let stashBefore = _.map(
+			await Promise.all(_.map(this.tokens,
+				token => this.market.describeToken(token.address, {block: tx.blockNumber-1}))),
+			state => state.stash);
+		let stashAfter = _.map(
+			await Promise.all(_.map(this.tokens,
+				token => this.market.describeToken(token.address))),
+			state => state.stash);
+		expected = _.map(_.zip(stashBefore, stash), a => bn.add(a[0], a[1]));
+		assert.deepEqual(stashAfter, expected);
 		// Ensure that the supply is unchanged.
 		assert.deepEqual(
 			await this.market.getSupplies({from: tx.blockNumber-1}),
 			await this.market.getSupplies());
 	});
 
-	it('Non-authority cannot lock tokens', async function() {
+	it('non-authority cannot stash tokens', async function() {
 		const token = this.randomToken();
 		const [wallet, caller] = this.randomUsers(2);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
 		await this.market.mint(wallet, balances, {from: this.authority});
-		const lock = _.times(NUM_TOKENS, i => i == token.IDX ? 1 : 0);
-		await assert.rejects(this.market.lock(wallet, lock, {from: caller}),
+		const stash = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
+		await assert.rejects(this.market.stash(wallet, stash, {from: caller}),
 			ERRORS.RESTRICTED);
 	});
 
-	it('Authority cannot call market proxyTransfer', async function() {
+	it('cannot stash > balance', async function() {
+		const token = this.randomToken();
+		const [wallet, caller] = this.randomUsers(2);
+		const amount = 100;
+		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
+		await this.market.mint(wallet, balances, {from: this.authority});
+		const stash = _.times(NUM_TOKENS, i => i == token.IDX ? amount + 1 : 0);
+		await assert.rejects(this.market.stash(wallet, stash, {from: this.authority}),
+			ERRORS.INSUFFICIENT);
+	});
+
+	it('authority cannot call market proxyTransfer', async function() {
 		const token = this.randomToken();
 		const [wallet, dst] = this.randomUsers(2);
 		const amount = 100;
@@ -147,7 +183,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				{from: this.authority}), ERRORS.RESTRICTED);
 	});
 
-	it('Users cannot call market transfer', async function() {
+	it('users cannot call market transfer', async function() {
 		const token = this.randomToken();
 		const [wallet, dst, rando] = this.randomUsers(3);
 		const amount = 100;
@@ -164,7 +200,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			ERRORS.RESTRICTED);
 	});
 
-	it('Users cannot call market proxyTransfer', async function() {
+	it('users cannot call market proxyTransfer', async function() {
 		const token = this.randomToken();
 		const [wallet, dst, rando] = this.randomUsers(3);
 		const amount = 100;
@@ -194,7 +230,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.deepEqual(actual, expected);
 	});
 
-	it('Minting increases total supply', async function() {
+	it('minting increases total supply', async function() {
 		const token = this.randomToken();
 		const [wallet] = this.randomUsers();
 		const oldSupplies = await this.market.getSupplies();
@@ -206,7 +242,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.deepEqual(newSupplies, expected);
 	});
 
-	it('Minting increases balance of user', async function() {
+	it('minting increases balance of user', async function() {
 		const token = this.randomToken();
 		const [wallet] = this.randomUsers();
 		const amount = 100;
@@ -219,7 +255,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 		assert.deepEqual(newBalances, expected);
 	});
 
-	it('Cannot transfer more than balance', async function() {
+	it('cannot transfer more than balance', async function() {
 		const token = this.randomToken();
 		const [spender, receiver] = this.randomUsers(2);
 		const amount = 100;
@@ -230,7 +266,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			ERRORS.INSUFFICIENT);
 	});
 
-	it('Cannot transferFrom more than balance', async function() {
+	it('cannot transferFrom more than balance', async function() {
 		const token = this.randomToken();
 		const [spender, wallet, receiver] = this.randomUsers(3);
 		const amount = 100;
@@ -242,7 +278,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			ERRORS.INSUFFICIENT);
 	});
 
-	it('Cannot transferFrom more than allowance', async function() {
+	it('cannot transferFrom more than allowance', async function() {
 		const token = this.randomToken();
 		const [spender, wallet, receiver] = _.sampleSize(this.users, 3);
 		const amount = 100;
@@ -254,7 +290,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			ERRORS.INSUFFICIENT);
 	});
 
-	it('Can transfer entire balance', async function() {
+	it('can transfer entire balance', async function() {
 		const token = this.randomToken();
 		const [spender, receiver] = _.sampleSize(this.users, 2);
 		const amount = 100;
@@ -269,7 +305,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			0);
 	});
 
-	it('Can transferFrom entire balance', async function() {
+	it('can transferFrom entire balance', async function() {
 		const token = this.randomToken();
 		const [spender, wallet, receiver] = _.sampleSize(this.users, 3);
 		const amount = 100;
@@ -285,7 +321,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			0);
 	});
 
-	it('Can transfer < balance', async function() {
+	it('can transfer < balance', async function() {
 		const token = this.randomToken();
 		const [spender, receiver] = _.sampleSize(this.users, 2);
 		const amount = 100;
@@ -300,7 +336,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			balances[token.IDX] - amount);
 	});
 
-	it('Can transferFrom < balance', async function() {
+	it('can transferFrom < balance', async function() {
 		const token = this.randomToken();
 		const [spender, wallet, receiver] = _.sampleSize(this.users, 3);
 		const amount = 100;
@@ -376,27 +412,13 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			token.transfer(token.address, amount, {from: spender}), ERRORS.INVALID);
 	});
 
-	it('transferFrom to 0x0 is not allowed', async function() {
+	it('token transfer to market contract is not allowed', async function() {
 		const token = this.randomToken();
-		const [spender, wallet, receiver] = _.sampleSize(this.users, 3);
+		const [spender] = _.sampleSize(this.users, 1);
 		const amount = 100;
 		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		await this.market.mint(wallet, balances, {from: this.authority});
-		await token.approve(spender, amount, {from: wallet});
+		await this.market.mint(spender, balances, {from: this.authority});
 		await assert.rejects(
-			token.transferFrom(wallet, ZERO_ADDRESS, amount, {from: spender}),
-			ERRORS.INVALID);
-	});
-
-	it('transferFrom to token contract is not allowed', async function() {
-		const token = this.randomToken();
-		const [spender, wallet, receiver] = _.sampleSize(this.users, 3);
-		const amount = 100;
-		const balances = _.times(NUM_TOKENS, i => i == token.IDX ? amount : 0);
-		await this.market.mint(wallet, balances, {from: this.authority});
-		await token.approve(spender, amount, {from: wallet});
-		await assert.rejects(
-			token.transferFrom(wallet, token.address, amount, {from: spender}),
-			ERRORS.INVALID);
+			token.transfer(this.market.address, amount, {from: spender}), ERRORS.INVALID);
 	});
 });

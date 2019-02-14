@@ -35,6 +35,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		uint256 supply;
 		// The ether balance for this resource.
 		uint256 funds;
+		// Stashed tokens that will be used to fill mint operations until depleted.
+		uint256 stash;
 		// Price yesterday.
 		uint256 priceYesterday;
 		// The canonical index of this token.
@@ -150,13 +152,14 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 
 	/// @dev Get the state of a resource token.
 	/// @param resource Address of the resource token contract.
-	/// @return The price, supply, (ether) balance, and yesterday's price
-	// for that token.
-	function getState(address resource)
+	/// @return The price, supply, (ether) balance, stash, and yesterday's price
+	/// for that token.
+	function describeToken(address resource)
 			external view returns (
 				uint256 price,
 				uint256 supply,
 				uint256 funds,
+				uint256 stash,
 				uint256 priceYesterday) {
 
 		Token storage token = _tokens[resource];
@@ -164,6 +167,7 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		price = getPrices()[token.idx];
 		supply = token.supply;
 		funds = token.funds;
+		stash = token.stash;
 		priceYesterday = token.priceYesterday;
 	}
 
@@ -236,7 +240,6 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 			external onlyInitialized onlyToken {
 
 		Token storage token = _tokens[msg.sender];
-		assert(token.token == msg.sender);
 		_transfer(token, from, to, amount);
 	}
 
@@ -312,32 +315,34 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 		return value;
 	}
 
-	/// @dev lock up tokens.
-	/// Take tokens from an owner and transfer them to this contract, locking
-	/// them up permanently.
+	/// @dev Stash tokens belonging to `from`.
+	/// These tokens will be held in a pool that will initially fill mint
+	/// operations until the pool is depleted.
 	/// Only an authority may call this.
 	/// @param from The owner whose tokens will be locked.
 	/// @param amounts The number of each token to locked, in canonical order.
-	function lock(address from, uint256[NUM_RESOURCES] calldata amounts)
+	function stash(address from, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyAuthority {
 
-		// #for RES in range(NUM_RESOURCES)
-		_transfer(_tokens[_tokenAddresses[$(RES)]], from, address(this),
-			amounts[$(RES)]);
-		// #done
+		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
+			Token storage token = _tokens[_tokenAddresses[i]];
+			uint256 bal = token.balances[from];
+			require(bal >= amounts[i], ERROR_INSUFFICIENT);
+			token.balances[from] = token.balances[from].sub(amounts[i]);
+			token.stash = token.stash.add(amounts[i]);
+		}
 	}
 
-	/// @dev Mint tokens.
-	/// Mint a number of every of the token supported, to an owner.
+	/// @dev Mint tokens to `to`.
 	/// Only an authority may call this.
-	/// @param to The owner of the new tokens.
+	/// @param to The owner of the minted tokens.
 	/// @param amounts The number of each token to mint.
 	function mint(address to, uint256[NUM_RESOURCES] calldata amounts)
 			external onlyInitialized onlyAuthority {
 
 		_touch();
-		// #for RES in range(NUM_RESOURCES)
-		_mint(_tokens[_tokenAddresses[$(RES)]], to, amounts[$(RES)]);
+		// #for TOKEN, IDX in map(range(NUM_RESOURCES), R => `_tokens[_tokenAddresses[${R}]]`)
+		_mint($$(TOKEN), to, amounts[$$(IDX)]);
 		// #done
 	}
 
@@ -357,13 +362,23 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 	}
 
 	/// @dev Mint tokens to be owned by `to`.
+	/// Stashed tokens will first be used to fill the operation, keeping the
+	/// supply the same, then any outstanding amount will cause new tokens to be
+	/// minted, increasing the supply.
 	/// @param token The token state instance.
 	/// @param to The token owner.
 	/// @param amount The number of tokens to burn (in wei).
 	function _mint(Token storage token, address to, uint256 amount)
 			private {
 
-		token.supply = token.supply.add(amount);
+		// Try to fill it with stashed tokens first.
+		if (token.stash >= amount)
+			token.stash -= amount;
+		else {
+			// Not enough in stash, mint the outstanding amount.
+			token.supply = token.supply.add(amount - token.stash);
+			token.stash = 0;
+		}
 		token.balances[to] = token.balances[to].add(amount);
 	}
 
@@ -378,6 +393,8 @@ contract UpcityMarket is BancorFormula, Uninitialized, Restricted, IMarket {
 			private {
 
 		assert(token.token != ZERO_ADDRESS);
+		require(to != address(this), ERROR_INVALID);
+		require(to != ZERO_ADDRESS, ERROR_INVALID);
 		require(token.balances[from] >= amount, ERROR_INSUFFICIENT);
 		assert(token.supply + amount >= amount);
 		token.balances[from] -= amount;

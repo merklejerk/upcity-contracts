@@ -611,28 +611,17 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 				ERRORS.INSUFFICIENT);
 		});
 
-		it('building blocks locks resources', async function() {
+		it('building blocks stashes resources', async function() {
 			const player = this.genesisPlayer;
 			const [x, y] = [0, 0];
 			const blocks = _.times(_.random(1, MAX_HEIGHT), i => _.sample(BLOCKS));
 			const cost = await this.game.getBuildCost(x, y, encodeBlocks(blocks));
 			const tx = await this.buildTower(x, y, blocks, player);
-			// Check that the balance of the market increased by cost and
-			// the balance of player decreased by cost.
-			let balanceBefore = await this.market.getBalances(
-				this.market.address, {block: tx.blockNumber-1});
-			let balanceAfter = await this.market.getBalances(
-				this.market.address);
-			let expected = _.map(_.zip(balanceBefore, cost),
-				a => bn.add(a[0], a[1]));
-			assert.deepEqual(balanceAfter, expected);
-			balanceBefore = await this.market.getBalances(
-				player, {block: tx.blockNumber-1});
-			balanceAfter = await this.market.getBalances(
-				player);
-			expected = _.map(_.zip(balanceBefore, cost),
-				a => bn.sub(a[0], a[1]));
-			assert.deepEqual(balanceAfter, expected);
+			const stashes = _.map(
+				await Promise.all(
+					_.map(this.tokens, t => this.market.describeToken(t.address))),
+				s => s.stash);
+			assert.deepEqual(stashes, cost);
 		});
 
 		it('building on a tile first does a collect', async function() {
@@ -658,21 +647,6 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			const [x, y] = [100, -100];
 			await this.game.__advanceTime(ONE_DAY);
 			await assert.rejects(this.game.collect(x, y), ERRORS.NOT_FOUND);
-		});
-
-		it('collect mints tokens', async function() {
-			const owner = this.genesisPlayer;
-			const [caller] = _.sampleSize(this.users, 1);
-			const funds = 100;
-			const [x, y] = [0, 0];
-			// Build one of each block.
-			await this.buildTower(x, y, BLOCKS, owner);
-			const oldSupply = await Promise.all(_.map(this.tokens, t => t.totalSupply()));
-			await this.game.__advanceTime(ONE_DAY);
-			const tx = await this.game.collect(x, y, {from: caller});
-			const newSupply = await Promise.all(_.map(this.tokens, t => t.totalSupply()));
-			for (let res of BLOCKS)
-				assert(bn.gt(newSupply[res], oldSupply[res]));
 		});
 
 		it('collect credits tile owner, not caller', async function() {
@@ -915,7 +889,7 @@ async function describeTile(x, y) {
 async function buyTokens(whom, amounts, bonus=0.01) {
 	assert(_.isArray(amounts) && amounts.length == NUM_RESOURCES);
 	const states = await Promise.all(
-		_.map(this.tokens, t => this.market.getState(t.address)));
+		_.map(this.tokens, t => this.market.describeToken(t.address)));
 	// Predict the cost of buying each token amount, with a little breathing
 	// room.
 	const costs = _.map(_.zip(states, amounts), ([s, a]) => bn.int(

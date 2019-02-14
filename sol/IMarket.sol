@@ -23,7 +23,7 @@ contract IMarket {
 		external;
 	function mint(address to, uint256[NUM_RESOURCES] calldata amounts)
 		external;
-	function lock(address from, uint256[NUM_RESOURCES] calldata amounts)
+	function stash(address from, uint256[NUM_RESOURCES] calldata amounts)
 		external;
 	function buy(uint256[NUM_RESOURCES] calldata amounts, address to)
 		external payable returns (uint256[NUM_RESOURCES] memory bought);

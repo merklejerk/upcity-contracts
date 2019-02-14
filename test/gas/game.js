@@ -54,7 +54,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			inst.SYMBOL = `${TOKEN_SYMBOL}-${i}`;
 			inst.IDX = i;
 			await inst
-				.new(inst.IDX, inst.NAME, inst.SYMBOL, this.market.address);
+				.new(inst.NAME, inst.SYMBOL, this.market.address);
 		}
 		// Initialize the market.
 		await this.market.init(
@@ -109,7 +109,7 @@ describe(/([^/\\]+?)(\..*)?$/.exec(__filename)[1], function() {
 			await this.game.__advanceTime(ONE_DAY);
 			return this.buyTile(x, y, buyer);
 		});
-		
+
 		test('owned, MAX_HEIGHT tile, 6 MAX_HEIGHT neighbors', async function() {
 			const [x, y] = [0, 0];
 			const blocks = _.times(MAX_HEIGHT, i => i % NUM_RESOURCES);
@@ -337,7 +337,7 @@ async function describeTile(x, y) {
 async function buyTokens(whom, amounts, bonus=0.01) {
 	assert(_.isArray(amounts) && amounts.length == NUM_RESOURCES);
 	const states = await Promise.all(
-		_.map(this.tokens, t => this.market.getState(t.address)));
+		_.map(this.tokens, t => this.market.describeToken(t.address)));
 	// Predict the cost of buying each token amount, with a little breathing
 	// room.
 	const costs = _.map(_.zip(states, amounts), ([s, a]) => bn.int(

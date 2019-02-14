@@ -242,8 +242,8 @@ contract UpcityGame is
 		_increaseBlockStats(blocks, count);
 		tile.blocks = _assignBlocks(tile.blocks, blocks, tile.height, count);
 		tile.height += count;
-		// Burn the costs.
-		_market.lock(msg.sender, costs);
+		// Stash the costs.
+		_market.stash(msg.sender, costs);
 		emit Built(tile.id, tile.owner, tile.blocks);
 	}
 
