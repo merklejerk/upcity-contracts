@@ -2352,10 +2352,10 @@ solc@^0.5.1:
     tmp "0.0.33"
     yargs "^11.0.0"
 
-solpp@^0.9.0:
-  version "0.9.0"
-  resolved "https://registry.yarnpkg.com/solpp/-/solpp-0.9.0.tgz#12725d971a6be5746d630862191a5ca5ea61cc69"
-  integrity sha512-2qfqXVDDqItY7oA9sYRTor05SfNplwj08Vy5ofHgFjcw+Nw5u9lmVTiU9ObWVQc4xZ/J92R3vUI9B4H2Q8kRfg==
+solpp@^0.9.1:
+  version "0.9.1"
+  resolved "https://registry.yarnpkg.com/solpp/-/solpp-0.9.1.tgz#77cfc7598be7b697c1835e48d852805ddbccd9b8"
+  integrity sha512-rYWoodQyIjokspeV6doQZ6e+TFyphQ9Fb7vqmnOjguBp9aBqrHvei6GvWg8mPaWpqla5i5YXiN6CxzlMUHS+cA==
   dependencies:
     antlr4 "^4.7.1"
     axios "^0.18.0"

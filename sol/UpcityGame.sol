@@ -172,9 +172,9 @@ contract UpcityGame is
 			assert(owner == address(0x0));
 			name = 0x0;
 			price = 0;
-			sharedResources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
+			sharedResources = $$(FILLED_ARRAY(uint256, NUM_RESOURCES, 0));
 			funds = 0;
-			scores = $$(UINT64_ARRAY(NUM_RESOURCES, 0));
+			scores = $$(FILLED_ARRAY(uint64, NUM_RESOURCES, 0));
 			inSeason = false;
 			lastTouchTime = 0;
 		}
@@ -203,7 +203,7 @@ contract UpcityGame is
 		// Create the neighboring tiles.
 		_createNeighbors(tile.x, tile.y);
 		// Share with neighbors.
-		_share(tile, price, $$(UINT256_ARRAY(NUM_RESOURCES, 0)));
+		_share(tile, price, $$(FILLED_ARRAY(uint256, NUM_RESOURCES, 0)));
 		// If this tile was previously unowned, append it to the tilesBought
 		// list.
 		if (oldOwner == ZERO_ADDRESS)
@@ -312,7 +312,7 @@ contract UpcityGame is
 		uint256 funds = tile.sharedFunds;
 
 		tile.lastTouchTime = $(BLOCKTIME);
-		tile.sharedResources = $$(UINT256_ARRAY(NUM_RESOURCES, 0));
+		tile.sharedResources = $$(FILLED_ARRAY(uint256, NUM_RESOURCES, 0));
 		tile.sharedFunds = 0;
 
 		// Share to neighbors.
@@ -346,7 +346,7 @@ contract UpcityGame is
 			private view returns (uint256[NUM_RESOURCES] memory, uint8) {
 
 		assert(tile.id != 0x0);
-		uint256[NUM_RESOURCES] memory cost = $$(UINT256_ARRAY(3, 0));
+		uint256[NUM_RESOURCES] memory cost = $$(FILLED_ARRAY(uint256, 3, 0));
 		// The global block totals. We will increment this for each block to get
 		// the accurate/integrated cost.
 		uint64[NUM_RESOURCES] memory blockTotals =
@@ -446,7 +446,7 @@ contract UpcityGame is
 		uint256 c = $(MAX(globalTotal, 1));
 		uint256 a = RESOURCE_ALPHAS[_block];
 		uint256 s = BLOCK_HEIGHT_PREMIUM[height] * $(MAX(c * a, PPM_ONE));
-		uint256[NUM_RESOURCES] memory cost = $$(UINT256_ARRAY(3, 0));
+		uint256[NUM_RESOURCES] memory cost = $$(FILLED_ARRAY(uint256, 3, 0));
 		// #for N in range(NUM_RESOURCES)
 		cost[$(N)] = (ONE_TOKEN * RECIPES[_block][$(N)] * s) / $$(PPM_ONE**2);
 		// #done
@@ -521,7 +521,10 @@ contract UpcityGame is
 			BlockStats storage bs = _blockStats[b];
 			bs.score += BLOCK_HEIGHT_BONUS[h];
 			bs.count += 1;
-			// Incrementally compute the production limit.
+		}
+		// Update production limits.
+		for (uint8 i = 0; i < NUM_RESOURCES; i++) {
+			BlockStats storage bs = _blockStats[i];
 			uint64 production = (PPM_ONE * bs.production) / PRODUCTION_ALPHA;
 			production = _estIntegerSqrt(bs.count, production);
 			production = (production * PRODUCTION_ALPHA) / PPM_ONE;

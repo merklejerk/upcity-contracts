@@ -74,7 +74,7 @@ contract UpcityBase {
 	// Zero address (0x0).
 	address internal constant ZERO_ADDRESS = address(0x0);
 	// 100%, or 1.0, in parts per million.
-	uint64 internal constant PPM_ONE = $$(AS_UINT64(PPM_ONE));
+	uint64 internal constant PPM_ONE = $$(uint64(PPM_ONE));
 	// The number of wei in one token (10**18).
 	uint256 internal constant ONE_TOKEN = $$(ONE_TOKEN);
 	// The number of seconds in one day.
@@ -108,12 +108,12 @@ contract UpcityBase {
 	// The building cost multiplier for any block at a certain height, in ppm.
 	uint64[MAX_HEIGHT] internal BLOCK_HEIGHT_PREMIUM = [
 		$$(join(map(range(MAX_HEIGHT),
-			h => AS_UINT64(TO_PPM(BLOCK_HEIGHT_PREMIUM_BASE**h))), ARRAY_SEP))
+			h => TO_PPM(BLOCK_HEIGHT_PREMIUM_BASE**h)), ARRAY_SEP))
 	];
 	// The yield multiplier for any block at a certain height, in ppm.
 	uint64[MAX_HEIGHT] internal BLOCK_HEIGHT_BONUS = [
 		$$(join(map(range(MAX_HEIGHT),
-		h => AS_UINT64(TO_PPM(BLOCK_HEIGHT_BONUS_BASE**h))), ARRAY_SEP))
+		h => TO_PPM(BLOCK_HEIGHT_BONUS_BASE**h)), ARRAY_SEP))
 	];
 	// The linear rate at which each block's costs increase with the total
 	// blocks built, in ppm.
@@ -195,7 +195,7 @@ contract UpcityBase {
 		uint256 _n = uint256(n) * PPM_ONE;
 		uint256 _n2 = _n * PPM_ONE;
 		uint256 r = hint == 0 ? ((uint256(n)+1) * PPM_ONE) / 2 : hint;
-		// #def SQRT_ITERATIONS 2
+		// #def SQRT_ITERATIONS 3
 		// #for I in range(SQRT_ITERATIONS)
 		r = (r + _n2 / r) / 2;
 		// #done

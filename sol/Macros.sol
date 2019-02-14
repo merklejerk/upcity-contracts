@@ -6,20 +6,10 @@ pragma solidity ^0.5;
 
 // #def ARRAY_SEP concat(",\n", __indent)
 
-// #def UINT256_ARRAY(count, value) \
-// 	map(filled(count, value), AS_UINT256)
+// #def TO_PPM(x) uint64(round(x * PRECISION))
 
-// #def UINT64_ARRAY(count, value) \
-// 	map(filled(count, value), AS_UINT64)
-
-// #def UINT8_ARRAY(count, value) \
-// 	map(filled(count, value), AS_UINT64)
-
-// #def TO_PPM(x) round(x * PRECISION)
-
-// #def AS_UINT64(x) `uint64($${uint64(x)})`
-
-// #def AS_UINT256(x) `uint256($${uint256(x)})`
+// #def FILLED_ARRAY(type, count, value) \
+//  filled(count, `${type}(${value})`)
 
 // #def PPM_ONE TO_PPM(1)
 
