@@ -58,7 +58,6 @@ async function deploy({contracts, target, config}) {
 		console.log(`Deploying resource token "${name}"...`);
 		const token = UpcityResourceTokenProxy.clone();
 		await token.new(
-				tokens.length,
 				name,
 				symbol,
 				market.address)
