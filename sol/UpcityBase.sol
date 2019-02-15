@@ -41,8 +41,8 @@ contract UpcityBase {
 		// The name of the tile.
 		bytes16 name;
 		// The price multiplier for a tile, which compounds by PURCHASE_MARKUP
-		// every time a tile is bought.
-		uint256 priceMultiplier;
+		// every time a tile is bought. In PPM.
+		uint64 priceMultiplier;
 		// The aggregated shared resources from neighbor tiles after
 		// they do a collect().
 		uint256[NUM_RESOURCES] sharedResources;

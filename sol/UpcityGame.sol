@@ -646,7 +646,8 @@ contract UpcityGame is
 		// price += market_price * buildCost
 		price = price.add(marketPrices[$(RES)].mul(tile.buildCosts[$(RES)]));
 		// #done
-		price = price / ONE_TOKEN + BASE_TILE_PRICE * tile.priceMultiplier;
+		price = price / ONE_TOKEN +
+			(BASE_TILE_PRICE * tile.priceMultiplier) / PPM_ONE;
 	}
 
 	/// @dev Do a direct transfer of ether to someone.
